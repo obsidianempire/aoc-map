@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obsidian Empire - Guild Map</title>
+    <title>Obsidian Empire - Verra Map</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Philosopher:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -12,115 +15,188 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #1a1a1a;
-            color: #fff;
+            font-family: 'Philosopher', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            overflow: hidden;
         }
         #map {
             width: 100vw;
             height: 100vh;
+            background: #0a0a0a;
         }
+        
+        /* Header */
+        .header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.7) 100%);
+            padding: 15px 30px;
+            border-bottom: 2px solid #8b4513;
+            box-shadow: 0 4px 20px rgba(139, 69, 19, 0.3);
+        }
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        .guild-title {
+            font-family: 'Cinzel', serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: #d4a574;
+            text-shadow: 0 0 10px rgba(212, 165, 116, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            font-size: 12px;
+            color: #8b8b8b;
+            margin-top: 4px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        
+        /* Controls Panel */
         .controls {
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: 110px;
+            right: 20px;
             z-index: 1000;
-            background: rgba(26, 26, 26, 0.95);
-            padding: 15px;
+            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
+            padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            min-width: 200px;
+            border: 2px solid #8b4513;
+            box-shadow: 0 8px 32px rgba(139, 69, 19, 0.4);
+            min-width: 280px;
+            backdrop-filter: blur(10px);
         }
         .controls h3 {
-            margin-bottom: 10px;
-            font-size: 16px;
-            color: #4CAF50;
+            margin-bottom: 15px;
+            font-family: 'Cinzel', serif;
+            font-size: 18px;
+            color: #d4a574;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(212, 165, 116, 0.4);
+            border-bottom: 1px solid #8b4513;
+            padding-bottom: 10px;
         }
         .control-group {
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
         .control-group label {
             display: block;
-            margin-bottom: 5px;
-            font-size: 12px;
-            color: #ccc;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #b8b8b8;
+            letter-spacing: 0.5px;
         }
         .control-group input, .control-group select {
             width: 100%;
-            padding: 8px;
-            border: 1px solid #444;
+            padding: 10px;
+            border: 1px solid #8b4513;
             border-radius: 4px;
-            background: #2a2a2a;
-            color: #fff;
-            font-size: 12px;
+            background: rgba(30, 30, 30, 0.8);
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: 'Philosopher', sans-serif;
+            transition: all 0.3s ease;
+        }
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #d4a574;
+            box-shadow: 0 0 10px rgba(212, 165, 116, 0.3);
         }
         .btn {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             margin-top: 10px;
-            border: none;
+            border: 2px solid #8b4513;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
-            font-weight: bold;
-            transition: all 0.3s;
+            font-size: 14px;
+            font-weight: 700;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
         }
         .btn-primary {
-            background: #4CAF50;
-            color: white;
+            background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
+            color: #fff;
         }
         .btn-primary:hover {
-            background: #45a049;
+            background: linear-gradient(135deg, #a0522d 0%, #8b4513 100%);
+            box-shadow: 0 0 15px rgba(139, 69, 19, 0.6);
+            transform: translateY(-2px);
         }
         .btn-secondary {
-            background: #2196F3;
-            color: white;
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            color: #d4a574;
         }
         .btn-secondary:hover {
-            background: #0b7dda;
+            background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
+            border-color: #d4a574;
+            box-shadow: 0 0 15px rgba(212, 165, 116, 0.3);
         }
         .status {
             position: absolute;
-            bottom: 10px;
-            right: 10px;
+            bottom: 20px;
+            right: 20px;
             z-index: 1000;
-            background: rgba(26, 26, 26, 0.9);
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #4CAF50;
+            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
+            padding: 12px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #d4a574;
+            border: 1px solid #8b4513;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
         }
         .status.error {
-            color: #f44336;
+            color: #ff6b6b;
+            border-color: #ff6b6b;
         }
+        
+        /* Legend */
         .legend {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
+            bottom: 20px;
+            left: 20px;
             z-index: 1000;
-            background: rgba(26, 26, 26, 0.95);
-            padding: 15px;
+            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
+            padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border: 2px solid #8b4513;
+            box-shadow: 0 8px 32px rgba(139, 69, 19, 0.4);
+            backdrop-filter: blur(10px);
         }
         .legend h4 {
-            margin-bottom: 10px;
-            font-size: 14px;
-            color: #4CAF50;
+            margin-bottom: 12px;
+            font-family: 'Cinzel', serif;
+            font-size: 16px;
+            color: #d4a574;
+            text-shadow: 0 0 8px rgba(212, 165, 116, 0.4);
         }
         .legend-item {
             display: flex;
             align-items: center;
-            margin-bottom: 5px;
-            font-size: 12px;
+            margin-bottom: 8px;
+            font-size: 13px;
         }
         .legend-color {
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            margin-right: 8px;
-            border: 2px solid #fff;
+            margin-right: 10px;
+            border: 2px solid #d4a574;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
         }
+        
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -129,59 +205,110 @@
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.7);
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
         }
         .modal-content {
-            background-color: #2a2a2a;
-            margin: 15% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            border-radius: 8px;
-            width: 80%;
-            max-width: 400px;
+            background: linear-gradient(135deg, rgba(30, 30, 30, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
+            margin: 10% auto;
+            padding: 30px;
+            border: 3px solid #8b4513;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 10px 50px rgba(139, 69, 19, 0.5);
         }
         .modal-content h3 {
-            margin-bottom: 15px;
-            color: #4CAF50;
+            margin-bottom: 20px;
+            font-family: 'Cinzel', serif;
+            font-size: 22px;
+            color: #d4a574;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(212, 165, 116, 0.5);
         }
         .modal-content input, .modal-content select, .modal-content textarea {
             width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #444;
-            border-radius: 4px;
-            background: #1a1a1a;
-            color: #fff;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #8b4513;
+            border-radius: 6px;
+            background: rgba(20, 20, 20, 0.8);
+            color: #e0e0e0;
+            font-family: 'Philosopher', sans-serif;
+            font-size: 14px;
         }
         .modal-content textarea {
-            min-height: 60px;
+            min-height: 80px;
             resize: vertical;
+        }
+        .modal-content input:focus, .modal-content select:focus, .modal-content textarea:focus {
+            outline: none;
+            border-color: #d4a574;
+            box-shadow: 0 0 10px rgba(212, 165, 116, 0.3);
         }
         .modal-buttons {
             display: flex;
-            gap: 10px;
+            gap: 12px;
         }
         .modal-buttons button {
             flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 4px;
+            padding: 12px;
+            border: 2px solid #8b4513;
+            border-radius: 6px;
             cursor: pointer;
-            font-weight: bold;
+            font-weight: 700;
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
         .close {
-            color: #aaa;
+            color: #8b8b8b;
             float: right;
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
             cursor: pointer;
+            transition: color 0.3s;
         }
         .close:hover {
-            color: #fff;
+            color: #d4a574;
+        }
+        
+        #addModeStatus {
+            margin-top: 15px;
+            padding: 10px;
+            font-size: 13px;
+            text-align: center;
+            border-radius: 4px;
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid #8b4513;
+        }
+        
+        /* Leaflet popup styling */
+        .leaflet-popup-content-wrapper {
+            background: linear-gradient(135deg, rgba(30, 30, 30, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
+            color: #e0e0e0;
+            border: 2px solid #8b4513;
+            border-radius: 8px;
+            font-family: 'Philosopher', sans-serif;
+        }
+        .leaflet-popup-tip {
+            background: rgba(30, 30, 30, 0.98);
         }
     </style>
 </head>
 <body>
+    <div class="header">
+        <div class="header-content">
+            <div>
+                <div class="guild-title">OBSIDIAN EMPIRE</div>
+                <div class="subtitle">Interactive Map of Verra</div>
+            </div>
+            <div style="text-align: right; color: #8b8b8b; font-size: 12px;">
+                <div>Phase 3 ~ Running in Ashes of Creation</div>
+            </div>
+        </div>
+    </div>
+
     <div id="map"></div>
     
     <div class="controls">
@@ -192,33 +319,33 @@
         </div>
         <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
         <button class="btn btn-secondary" onclick="toggleAddMode()">Toggle Add Pin Mode</button>
-        <div id="addModeStatus" style="margin-top: 10px; font-size: 12px; color: #888;">Click mode: View Only</div>
+        <div id="addModeStatus">Click mode: View Only</div>
     </div>
 
     <div class="legend">
         <h4>Pin Categories</h4>
         <div class="legend-item">
-            <div class="legend-color" style="background: #ff4444;"></div>
+            <div class="legend-color" style="background: #c41e3a;"></div>
             <span>World Boss</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #4CAF50;"></div>
+            <div class="legend-color" style="background: #d4a574;"></div>
             <span>Resource Node</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #2196F3;"></div>
+            <div class="legend-color" style="background: #4a90e2;"></div>
             <span>POI</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #FFC107;"></div>
+            <div class="legend-color" style="background: #8b4513;"></div>
             <span>Guild Location</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #9C27B0;"></div>
+            <div class="legend-color" style="background: #6b4e71;"></div>
             <span>Dungeon</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #00BCD4;"></div>
+            <div class="legend-color" style="background: #5a9a9a;"></div>
             <span>Other</span>
         </div>
     </div>
@@ -255,17 +382,16 @@
         let tempLatLng = null;
 
         const categoryColors = {
-            boss: '#ff4444',
-            resource: '#4CAF50',
-            poi: '#2196F3',
-            guild: '#FFC107',
-            dungeon: '#9C27B0',
-            other: '#00BCD4'
+            boss: '#c41e3a',
+            resource: '#d4a574',
+            poi: '#4a90e2',
+            guild: '#8b4513',
+            dungeon: '#6b4e71',
+            other: '#5a9a9a'
         };
 
         // Initialize map
         function initMap() {
-            // Create map with no CRS (for image maps)
             map = L.map('map', {
                 crs: L.CRS.Simple,
                 minZoom: -2,
@@ -273,15 +399,12 @@
                 zoomControl: true
             });
 
-            // Replace this URL with your actual AoC map image
-        //    const imageUrl = 'https://via.placeholder.com/2000x2000/1a1a1a/4CAF50?text=Replace+with+your+AoC+Map+Image';
-            const imageUrl = 'AshesMap.jpg';
+            const imageUrl = 'https://raw.githubusercontent.com/obsidianempire/aoc-map/main/AshesMapVerra.jpg';
             const imageBounds = [[0, 0], [1000, 1000]];
             
             L.imageOverlay(imageUrl, imageBounds).addTo(map);
             map.fitBounds(imageBounds);
 
-            // Add click handler for adding pins
             map.on('click', function(e) {
                 if (addPinMode) {
                     tempLatLng = e.latlng;
@@ -297,10 +420,12 @@
             const status = document.getElementById('addModeStatus');
             if (addPinMode) {
                 status.textContent = 'Click mode: ADD PIN (click map to add)';
-                status.style.color = '#4CAF50';
+                status.style.color = '#d4a574';
+                status.style.borderColor = '#d4a574';
             } else {
                 status.textContent = 'Click mode: View Only';
-                status.style.color = '#888';
+                status.style.color = '#8b8b8b';
+                status.style.borderColor = '#8b4513';
             }
         }
 
@@ -367,11 +492,9 @@
                 if (response.ok) {
                     const pins = await response.json();
                     
-                    // Clear existing markers
                     Object.values(markers).forEach(marker => map.removeLayer(marker));
                     markers = {};
                     
-                    // Add all pins
                     pins.forEach(pin => addMarkerToMap(pin));
                     showStatus(`Loaded ${pins.length} pins`);
                 } else {
@@ -388,19 +511,19 @@
             
             const icon = L.divIcon({
                 className: 'custom-pin',
-                html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
+                html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d4a574; box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px ${color}40;"></div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             });
 
             const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
             
             const popupContent = `
-                <div style="color: #000;">
-                    <strong>${pin.title}</strong><br>
+                <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
+                    <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
                     ${pin.description ? pin.description + '<br>' : ''}
-                    <em style="font-size: 11px;">${pin.category}</em><br>
-                    <button onclick="deletePin(${pin.id})" style="margin-top: 5px; padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer;">Delete</button>
+                    <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
+                    <button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Delete</button>
                 </div>
             `;
             
@@ -445,7 +568,6 @@
             }, 3000);
         }
 
-        // Initialize on load
         window.onload = function() {
             initMap();
         };
