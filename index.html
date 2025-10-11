@@ -313,13 +313,22 @@
     
     <div class="controls">
         <h3>Map Controls</h3>
-        <div class="control-group">
-            <label>API Server URL:</label>
-            <input type="text" id="apiUrl" value="" placeholder="Leave empty for same server">
+        <div id="authSection">
+            <div id="notLoggedIn">
+                <button class="btn btn-primary" onclick="loginWithDiscord()">Login with Discord</button>
+                <p style="font-size: 11px; color: #8b8b8b; margin-top: 10px; text-align: center;">Login required to add/remove pins</p>
+            </div>
+            <div id="loggedIn" style="display: none;">
+                <div style="text-align: center; margin-bottom: 15px; padding: 10px; background: rgba(139, 69, 19, 0.2); border-radius: 4px;">
+                    <div style="font-size: 12px; color: #8b8b8b;">Logged in as</div>
+                    <div id="username" style="font-weight: bold; color: #d4a574;"></div>
+                </div>
+                <button class="btn btn-secondary" onclick="logout()" style="margin-bottom: 10px;">Logout</button>
+            </div>
         </div>
         <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
-        <button class="btn btn-secondary" onclick="toggleAddMode()">Toggle Add Pin Mode</button>
-        <div id="addModeStatus">Click mode: View Only</div>
+        <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
+        <div id="addModeStatus">Click mode: View Only (Login Required)</div>
     </div>
 
     <div class="legend">
@@ -380,6 +389,10 @@
         let markers = {};
         let addPinMode = false;
         let tempLatLng = null;
+        let authToken = null;
+        let currentUser = null;
+
+        const API_URL = window.location.origin;
 
         const categoryColors = {
             boss: '#c41e3a',
@@ -389,6 +402,83 @@
             dungeon: '#6b4e71',
             other: '#5a9a9a'
         };
+
+        // Check for existing auth token on load
+        function checkAuth() {
+            authToken = localStorage.getItem('discord_token');
+            if (authToken) {
+                verifyToken();
+            }
+        }
+
+        async function verifyToken() {
+            try {
+                const response = await fetch(`${API_URL}/verify`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.authenticated) {
+                        currentUser = data;
+                        updateAuthUI(true, data.username);
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('Token verification failed:', error);
+            }
+            
+            // Token invalid, clear it
+            logout();
+        }
+
+        function updateAuthUI(loggedIn, username = '') {
+            document.getElementById('notLoggedIn').style.display = loggedIn ? 'none' : 'block';
+            document.getElementById('loggedIn').style.display = loggedIn ? 'block' : 'none';
+            document.getElementById('username').textContent = username;
+            document.getElementById('toggleAddBtn').disabled = !loggedIn;
+            
+            if (!loggedIn) {
+                addPinMode = false;
+                document.getElementById('addModeStatus').textContent = 'Click mode: View Only (Login Required)';
+                document.getElementById('addModeStatus').style.color = '#8b8b8b';
+            }
+        }
+
+        async function loginWithDiscord() {
+            try {
+                const response = await fetch(`${API_URL}/login`);
+                const data = await response.json();
+                
+                // Open Discord OAuth in popup
+                const popup = window.open(data.auth_url, 'Discord Login', 'width=500,height=700');
+                
+                // Listen for auth response
+                window.addEventListener('message', function(event) {
+                    if (event.data.type === 'discord_auth') {
+                        authToken = event.data.token;
+                        currentUser = { username: event.data.username };
+                        localStorage.setItem('discord_token', authToken);
+                        updateAuthUI(true, event.data.username);
+                        showStatus('Logged in successfully!');
+                    }
+                });
+            } catch (error) {
+                showStatus('Login failed', true);
+                console.error('Login error:', error);
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('discord_token');
+            updateAuthUI(false);
+            showStatus('Logged out');
+        }
 
         // Initialize map
         function initMap() {
@@ -406,16 +496,22 @@
             map.fitBounds(imageBounds);
 
             map.on('click', function(e) {
-                if (addPinMode) {
+                if (addPinMode && authToken) {
                     tempLatLng = e.latlng;
                     showPinModal();
                 }
             });
 
-            showStatus('Map initialized. Load pins or add new ones!');
+            showStatus('Map initialized. Load pins or login to add!');
+            checkAuth();
         }
 
         function toggleAddMode() {
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+            
             addPinMode = !addPinMode;
             const status = document.getElementById('addModeStatus');
             if (addPinMode) {
@@ -451,6 +547,11 @@
                 return;
             }
 
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+
             const pinData = {
                 title: title,
                 description: description,
@@ -460,11 +561,11 @@
             };
 
             try {
-                const apiUrl = document.getElementById('apiUrl').value;
-                const response = await fetch(`${apiUrl}/pins`, {
+                const response = await fetch(`${API_URL}/pins`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
                     },
                     body: JSON.stringify(pinData)
                 });
@@ -475,7 +576,8 @@
                     closePinModal();
                     showStatus('Pin added successfully!');
                 } else {
-                    showStatus('Error adding pin', true);
+                    const error = await response.json();
+                    showStatus(error.error || 'Error adding pin', true);
                 }
             } catch (error) {
                 showStatus('Error connecting to server', true);
@@ -485,9 +587,8 @@
 
         async function loadPins() {
             try {
-                const apiUrl = document.getElementById('apiUrl').value;
                 showStatus('Loading pins...');
-                const response = await fetch(`${apiUrl}/pins`);
+                const response = await fetch(`${API_URL}/pins`);
                 
                 if (response.ok) {
                     const pins = await response.json();
@@ -518,12 +619,58 @@
 
             const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
             
+            const canDelete = currentUser && pin.discord_user_id === currentUser.discord_id;
+            const deleteBtn = canDelete ? 
+                `<button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Delete</button>` :
+                '';
+            
             const popupContent = `
                 <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
                     <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
                     ${pin.description ? pin.description + '<br>' : ''}
                     <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
-                    <button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Delete</button>
+                    <div style="font-size: 10px; color: #666; margin-top: 4px;">Added by: ${pin.discord_username}</div>
+                    ${deleteBtn}
+                </div>
+            `;
+            
+            marker.bindPopup(popupContent);
+            markers[pin.id] = marker;
+        }
+
+        async function deletePin(pinId) {
+            if (!confirm('Are you sure you want to delete this pin?')) {
+                return;
+            }
+
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/pins/${pinId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    if (markers[pinId]) {
+                        map.removeLayer(markers[pinId]);
+                        delete markers[pinId];
+                    }
+                    showStatus('Pin deleted successfully');
+                } else {
+                    const error = await response.json();
+                    showStatus(error.error || 'Error deleting pin', true);
+                }
+            } catch (error) {
+                showStatus('Error connecting to server', true);
+                console.error('Error:', error);
+            }
+        }: 11px; text-transform: uppercase;">Delete</button>
                 </div>
             `;
             
@@ -537,7 +684,7 @@
             }
 
             try {
-                const apiUrl = document.getElementById('apiUrl').value;
+                const apiUrl = document.getElementById('apiUrl').value || window.location.origin;
                 const response = await fetch(`${apiUrl}/pins/${pinId}`, {
                     method: 'DELETE'
                 });
@@ -570,6 +717,7 @@
 
         window.onload = function() {
             initMap();
+            loadPins();
         };
     </script>
 </body>
