@@ -3,9 +3,11 @@ services:
     name: aoc-map-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: PORT
-        generateValue: true
+    disk:
+      name: aoc-map-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1

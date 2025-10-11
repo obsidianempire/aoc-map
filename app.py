@@ -11,6 +11,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 CORS(app, supports_credentials=True, origins=['*'])
 
+# Database configuration
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+USE_POSTGRES = DATABASE_URL.startswith('postgresql')
+
 # Discord OAuth2 settings
 DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID', '')
 DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET', '')
@@ -18,7 +22,14 @@ DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:
 DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')  # Your Discord server ID
 DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 
-DATABASE = 'map_pins.db'
+if USE_POSTGRES:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    DATABASE = DATABASE_URL
+    print("🐘 Using PostgreSQL database")
+else:
+    DATABASE = 'map_pins.db'
+    print("📁 Using SQLite database")
 
 def get_db():
     """Connect to the SQLite database."""
@@ -283,7 +294,7 @@ def callback():
                 print(f"✅ User {user_data['username']} is a member of Obsidian Empire")
             else:
                 print(f"⚠️ Could not verify guild membership for {user_data['username']}")
-                        
+
         # Create JWT token
         jwt_token = create_token(user_data)
         
