@@ -235,6 +235,20 @@ def callback():
         print(f"❌ OAuth callback error: {e}")
         return f'<html><body><p>Error during authentication: {str(e)}</p></body></html>', 500
 
+
+@app.route("/delete_db", methods=["DELETE"])
+def delete_db():
+    db_path = "map_pins.db"
+    try:
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            return jsonify({"status": "deleted"}), 200
+        else:
+            return jsonify({"error": "file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/verify', methods=['GET'])
 def verify():
     """Verify a token and return user info."""
