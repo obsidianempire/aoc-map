@@ -24,7 +24,10 @@ DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 def _normalize_db_url(url: str) -> str:
     # Some providers (including older Render strings) use postgres://; SQLAlchemy prefers postgresql://
     if url and url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        url = url.replace("postgres://", "postgresql://", 1)
+    # Force psycopg v3 driver
+    if url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 DATABASE_URL = _normalize_db_url(os.environ.get("DATABASE_URL", ""))
