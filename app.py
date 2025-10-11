@@ -7,6 +7,10 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 
+# --- NEW: SQLAlchemy / Postgres ---
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 CORS(app, supports_credentials=True, origins=['*'])
@@ -22,92 +26,49 @@ DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:
 DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')  # Your Discord server ID
 DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 
-if USE_POSTGRES:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    DATABASE = DATABASE_URL
-    print("🐘 Using PostgreSQL database")
-else:
-    DATABASE = 'map_pins.db'
-    print("📁 Using SQLite database")
 
-def get_db():
-    """Connect to the SQLite database."""
-    db = sqlite3.connect(DATABASE)
-    db.row_factory = sqlite3.Row
-    return db
+# ---------- DATABASE (PostgreSQL via SQLAlchemy) ----------
+def _normalize_db_url(url: str) -> str:
+    # Some providers (including older Render strings) use postgres://; SQLAlchemy prefers postgresql://
+    if url and url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    # Force psycopg v3 driver
+    if url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+DATABASE_URL = _normalize_db_url(os.environ.get("DATABASE_URL", ""))
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it in Render > Environment.")
+
+
+
 
 def init_db():
-    """Initialize the database with pins table."""
+    """Initialize the database with pins table (idempotent)."""
     try:
-        db = get_db()
-        cursor = db.cursor()
-        
-        # Check if table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pins'")
-        table_exists = cursor.fetchone()
-        
-        if table_exists:
-            # Check if migration is needed
-            cursor.execute("PRAGMA table_info(pins)")
-            columns = [col[1] for col in cursor.fetchall()]
-            
-            if 'discord_user_id' not in columns:
-                print("🔄 Migrating database to add Discord columns...")
-                
-                # Rename old table
-                cursor.execute("ALTER TABLE pins RENAME TO pins_old")
-                
-                # Create new table
-                cursor.execute('''
-                    CREATE TABLE pins (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        category TEXT NOT NULL,
-                        lat REAL NOT NULL,
-                        lng REAL NOT NULL,
-                        discord_user_id TEXT NOT NULL,
-                        discord_username TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                
-                # Copy old data
-                cursor.execute('''
-                    INSERT INTO pins (id, title, description, category, lat, lng, discord_user_id, discord_username, created_at)
-                    SELECT id, title, description, category, lat, lng, 'legacy-user', 'Legacy User', 
-                           COALESCE(created_at, CURRENT_TIMESTAMP)
-                    FROM pins_old
-                ''')
-                
-                migrated = cursor.rowcount
-                cursor.execute("DROP TABLE pins_old")
-                
-                print(f"✅ Migrated {migrated} existing pins to 'Legacy User'")
-        else:
-            # Create fresh table
-            db.execute('''
-                CREATE TABLE pins (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    category TEXT NOT NULL,
-                    lat REAL NOT NULL,
-                    lng REAL NOT NULL,
-                    discord_user_id TEXT NOT NULL,
-                    discord_username TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            print("✅ Created new pins table")
-        
-        db.commit()
-        db.close()
-        print("✅ Database initialized successfully!")
-    except Exception as e:
-        print(f"❌ Error initializing database: {e}")
+        create_sql = """
+        CREATE TABLE IF NOT EXISTS pins (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            lat DOUBLE PRECISION NOT NULL,
+            lng DOUBLE PRECISION NOT NULL,
+            discord_user_id TEXT NOT NULL,
+            discord_username TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """
+        with engine.begin() as conn:
+            conn.execute(text(create_sql))
+        print("✅ PostgreSQL initialized (table: pins)")
+    except SQLAlchemyError as e:
+        print(f"❌ Error initializing PostgreSQL: {e}")
+        raise
 
+    
 def create_token(user_data):
     """Create a JWT token for the user."""
     payload = {
