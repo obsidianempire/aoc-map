@@ -26,7 +26,6 @@
             background: #0a0a0a;
         }
         
-        /* Header */
         .header {
             position: absolute;
             top: 0;
@@ -61,7 +60,6 @@
             text-transform: uppercase;
         }
         
-        /* Controls Panel */
         .controls {
             position: absolute;
             top: 110px;
@@ -85,32 +83,6 @@
             border-bottom: 1px solid #8b4513;
             padding-bottom: 10px;
         }
-        .control-group {
-            margin-bottom: 12px;
-        }
-        .control-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            color: #b8b8b8;
-            letter-spacing: 0.5px;
-        }
-        .control-group input, .control-group select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #8b4513;
-            border-radius: 4px;
-            background: rgba(30, 30, 30, 0.8);
-            color: #e0e0e0;
-            font-size: 13px;
-            font-family: 'Philosopher', sans-serif;
-            transition: all 0.3s ease;
-        }
-        .control-group input:focus, .control-group select:focus {
-            outline: none;
-            border-color: #d4a574;
-            box-shadow: 0 0 10px rgba(212, 165, 116, 0.3);
-        }
         .btn {
             width: 100%;
             padding: 12px;
@@ -125,11 +97,15 @@
             transition: all 0.3s ease;
             text-transform: uppercase;
         }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         .btn-primary {
             background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
             color: #fff;
         }
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
             background: linear-gradient(135deg, #a0522d 0%, #8b4513 100%);
             box-shadow: 0 0 15px rgba(139, 69, 19, 0.6);
             transform: translateY(-2px);
@@ -138,10 +114,32 @@
             background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
             color: #d4a574;
         }
-        .btn-secondary:hover {
+        .btn-secondary:hover:not(:disabled) {
             background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
             border-color: #d4a574;
             box-shadow: 0 0 15px rgba(212, 165, 116, 0.3);
+        }
+        .user-info {
+            text-align: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(139, 69, 19, 0.2);
+            border-radius: 4px;
+        }
+        .user-label {
+            font-size: 12px;
+            color: #8b8b8b;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #d4a574;
+            margin-top: 4px;
+        }
+        .login-note {
+            font-size: 11px;
+            color: #8b8b8b;
+            margin-top: 10px;
+            text-align: center;
         }
         .status {
             position: absolute;
@@ -161,7 +159,6 @@
             border-color: #ff6b6b;
         }
         
-        /* Legend */
         .legend {
             position: absolute;
             bottom: 20px;
@@ -196,7 +193,6 @@
             box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
         }
         
-        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -283,7 +279,6 @@
             border: 1px solid #8b4513;
         }
         
-        /* Leaflet popup styling */
         .leaflet-popup-content-wrapper {
             background: linear-gradient(135deg, rgba(30, 30, 30, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
             color: #e0e0e0;
@@ -313,19 +308,21 @@
     
     <div class="controls">
         <h3>Map Controls</h3>
+        
         <div id="authSection">
             <div id="notLoggedIn">
                 <button class="btn btn-primary" onclick="loginWithDiscord()">Login with Discord</button>
-                <p style="font-size: 11px; color: #8b8b8b; margin-top: 10px; text-align: center;">Login required to add/remove pins</p>
+                <p class="login-note">Login required to add/remove pins</p>
             </div>
             <div id="loggedIn" style="display: none;">
-                <div style="text-align: center; margin-bottom: 15px; padding: 10px; background: rgba(139, 69, 19, 0.2); border-radius: 4px;">
-                    <div style="font-size: 12px; color: #8b8b8b;">Logged in as</div>
-                    <div id="username" style="font-weight: bold; color: #d4a574;"></div>
+                <div class="user-info">
+                    <div class="user-label">Logged in as</div>
+                    <div class="user-name" id="username"></div>
                 </div>
-                <button class="btn btn-secondary" onclick="logout()" style="margin-bottom: 10px;">Logout</button>
+                <button class="btn btn-secondary" onclick="logout()">Logout</button>
             </div>
         </div>
+        
         <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
         <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
         <div id="addModeStatus">Click mode: View Only (Login Required)</div>
@@ -361,7 +358,6 @@
 
     <div class="status" id="status">Ready</div>
 
-    <!-- Add Pin Modal -->
     <div id="pinModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closePinModal()">&times;</span>
@@ -403,7 +399,34 @@
             other: '#5a9a9a'
         };
 
-        // Check for existing auth token on load
+        // Initialize map
+        function initMap() {
+            map = L.map('map', {
+                crs: L.CRS.Simple,
+                minZoom: -2,
+                maxZoom: 2,
+                zoomControl: true
+            });
+
+            const imageUrl = '/AshesMapVerra.jpg';
+            const imageBounds = [[0, 0], [1000, 1000]];
+            
+            L.imageOverlay(imageUrl, imageBounds).addTo(map);
+            map.fitBounds(imageBounds);
+
+            map.on('click', function(e) {
+                if (addPinMode && authToken) {
+                    tempLatLng = e.latlng;
+                    showPinModal();
+                }
+            });
+
+            showStatus('Map initialized');
+            checkAuth();
+            loadPins();
+        }
+
+        // Check for existing auth token
         function checkAuth() {
             authToken = localStorage.getItem('discord_token');
             if (authToken) {
@@ -431,7 +454,6 @@
                 console.error('Token verification failed:', error);
             }
             
-            // Token invalid, clear it
             logout();
         }
 
@@ -453,10 +475,13 @@
                 const response = await fetch(`${API_URL}/login`);
                 const data = await response.json();
                 
-                // Open Discord OAuth in popup
+                if (data.error) {
+                    showStatus(data.error, true);
+                    return;
+                }
+                
                 const popup = window.open(data.auth_url, 'Discord Login', 'width=500,height=700');
                 
-                // Listen for auth response
                 window.addEventListener('message', function(event) {
                     if (event.data.type === 'discord_auth') {
                         authToken = event.data.token;
@@ -464,6 +489,7 @@
                         localStorage.setItem('discord_token', authToken);
                         updateAuthUI(true, event.data.username);
                         showStatus('Logged in successfully!');
+                        loadPins();
                     }
                 });
             } catch (error) {
@@ -478,32 +504,7 @@
             localStorage.removeItem('discord_token');
             updateAuthUI(false);
             showStatus('Logged out');
-        }
-
-        // Initialize map
-        function initMap() {
-            map = L.map('map', {
-                crs: L.CRS.Simple,
-                minZoom: -2,
-                maxZoom: 2,
-                zoomControl: true
-            });
-
-            const imageUrl = 'https://raw.githubusercontent.com/obsidianempire/aoc-map/main/AshesMapVerra.jpg';
-            const imageBounds = [[0, 0], [1000, 1000]];
-            
-            L.imageOverlay(imageUrl, imageBounds).addTo(map);
-            map.fitBounds(imageBounds);
-
-            map.on('click', function(e) {
-                if (addPinMode && authToken) {
-                    tempLatLng = e.latlng;
-                    showPinModal();
-                }
-            });
-
-            showStatus('Map initialized. Load pins or login to add!');
-            checkAuth();
+            loadPins();
         }
 
         function toggleAddMode() {
@@ -670,38 +671,6 @@
                 showStatus('Error connecting to server', true);
                 console.error('Error:', error);
             }
-        }: 11px; text-transform: uppercase;">Delete</button>
-                </div>
-            `;
-            
-            marker.bindPopup(popupContent);
-            markers[pin.id] = marker;
-        }
-
-        async function deletePin(pinId) {
-            if (!confirm('Are you sure you want to delete this pin?')) {
-                return;
-            }
-
-            try {
-                const apiUrl = document.getElementById('apiUrl').value || window.location.origin;
-                const response = await fetch(`${apiUrl}/pins/${pinId}`, {
-                    method: 'DELETE'
-                });
-
-                if (response.ok) {
-                    if (markers[pinId]) {
-                        map.removeLayer(markers[pinId]);
-                        delete markers[pinId];
-                    }
-                    showStatus('Pin deleted successfully');
-                } else {
-                    showStatus('Error deleting pin', true);
-                }
-            } catch (error) {
-                showStatus('Error connecting to server', true);
-                console.error('Error:', error);
-            }
         }
 
         function showStatus(message, isError = false) {
@@ -717,7 +686,6 @@
 
         window.onload = function() {
             initMap();
-            loadPins();
         };
     </script>
 </body>
