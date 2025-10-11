@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sqlite3
 import os
@@ -131,6 +131,21 @@ def update_pin(pin_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint with API info."""
+    return jsonify({
+        'name': 'Obsidian Empire Map API',
+        'status': 'running',
+        'endpoints': {
+            'health': '/health',
+            'get_pins': 'GET /pins',
+            'create_pin': 'POST /pins',
+            'update_pin': 'PUT /pins/<id>',
+            'delete_pin': 'DELETE /pins/<id>'
+        }
+    })
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
@@ -143,4 +158,5 @@ if __name__ == '__main__':
     
     # Run the app
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Set debug=False for production
+    app.run(host='0.0.0.0', port=port, debug=False)
