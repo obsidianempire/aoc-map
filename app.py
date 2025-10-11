@@ -17,20 +17,24 @@ def get_db():
 
 def init_db():
     """Initialize the database with pins table."""
-    db = get_db()
-    db.execute('''
-        CREATE TABLE IF NOT EXISTS pins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
-            category TEXT NOT NULL,
-            lat REAL NOT NULL,
-            lng REAL NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    db.commit()
-    db.close()
+    try:
+        db = get_db()
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS pins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                category TEXT NOT NULL,
+                lat REAL NOT NULL,
+                lng REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        db.commit()
+        db.close()
+        print("Database initialized successfully!")
+    except Exception as e:
+        print(f"Error initializing database: {e}")
 
 @app.route('/')
 def home():
@@ -64,6 +68,7 @@ def create_pin():
     """Create a new pin."""
     try:
         data = request.json
+        print(f"Received pin data: {data}")  # Debug logging
         
         # Validate required fields
         if not data.get('title') or not data.get('category'):
@@ -89,8 +94,10 @@ def create_pin():
         pin = db.execute('SELECT * FROM pins WHERE id = ?', (cursor.lastrowid,)).fetchone()
         db.close()
         
+        print(f"Pin created successfully: {dict(pin)}")  # Debug logging
         return jsonify(dict(pin)), 201
     except Exception as e:
+        print(f"Error creating pin: {e}")  # Debug logging
         return jsonify({'error': str(e)}), 500
 
 @app.route('/pins/<int:pin_id>', methods=['DELETE'])
@@ -155,3 +162,6 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     # Set debug=False for production
     app.run(host='0.0.0.0', port=port, debug=False)
+else:
+    # When running with Gunicorn, initialize the database
+    init_db()
