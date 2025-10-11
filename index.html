@@ -404,7 +404,10 @@
             map = L.map('map', {
                 crs: L.CRS.Simple,
                 minZoom: -2,
-                maxZoom: 2,
+                maxZoom: 8,
+                zoom: 0,
+                zoomSnap: 0.25,   // quarter steps
+                zoomDelta: 0.25,   // scroll/keyboard step size
                 zoomControl: true
             });
 
