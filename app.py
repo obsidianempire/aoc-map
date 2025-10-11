@@ -32,6 +32,21 @@ def init_db():
     db.commit()
     db.close()
 
+@app.route('/')
+def home():
+    """Serve the interactive map HTML."""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/AshesMapVerra.jpg')
+def serve_map_image():
+    """Serve the map image."""
+    return send_from_directory('.', 'AshesMapVerra.jpg')
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint."""
+    return jsonify({'status': 'healthy', 'message': 'Map API is running'})
+
 @app.route('/pins', methods=['GET'])
 def get_pins():
     """Get all pins."""
@@ -130,26 +145,6 @@ def update_pin(pin_id):
         return jsonify(dict(updated_pin))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/', methods=['GET'])
-def home():
-    """Root endpoint with API info."""
-    return jsonify({
-        'name': 'Obsidian Empire Map API',
-        'status': 'running',
-        'endpoints': {
-            'health': '/health',
-            'get_pins': 'GET /pins',
-            'create_pin': 'POST /pins',
-            'update_pin': 'PUT /pins/<id>',
-            'delete_pin': 'DELETE /pins/<id>'
-        }
-    })
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint."""
-    return jsonify({'status': 'healthy', 'message': 'Map API is running'})
 
 if __name__ == '__main__':
     # Initialize database on startup
