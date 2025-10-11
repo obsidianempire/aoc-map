@@ -401,21 +401,26 @@
 
         // Initialize map
         function initMap() {
+            const imageUrl = '/AshesMapVerra.jpg';
+            const imgWidth = 1876;  // ← actual pixels
+            const imgHeight = 2048; // ← actual pixels
+
             map = L.map('map', {
                 crs: L.CRS.Simple,
                 minZoom: -2,
-                maxZoom: 8,
+                maxZoom: 12,
                 zoom: 0,
                 zoomSnap: 0.25,   // quarter steps
                 zoomDelta: 0.25,   // scroll/keyboard step size
+                wheelPxPerZoomLevel: 40,
                 zoomControl: true
             });
 
-            const imageUrl = '/AshesMapVerra.jpg';
-            const imageBounds = [[0, 0], [1000, 1000]];
+            const bounds = [[0, 0], [imgHeight, imgWidth]];
             
-            L.imageOverlay(imageUrl, imageBounds).addTo(map);
-            map.fitBounds(imageBounds);
+            L.imageOverlay(imageUrl, bounds).addTo(map);
+             map.setMaxBounds(bounds);  // keep panning within the image
+            map.fitBounds(bounds);
 
             map.on('click', function(e) {
                 if (addPinMode && authToken) {
