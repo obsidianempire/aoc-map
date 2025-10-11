@@ -15,6 +15,7 @@ CORS(app, supports_credentials=True, origins=['*'])
 DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID', '')
 DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET', '')
 DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:5000/callback')
+DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')  # Your Discord server ID
 DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 
 DATABASE = 'map_pins.db'
@@ -224,7 +225,65 @@ def callback():
         
         user_data = user_response.json()
         print(f"✅ User logged in: {user_data['username']}")
-        
+        # Check guild membership if DISCORD_GUILD_ID is set
+        if DISCORD_GUILD_ID:
+            guilds_response = requests.get(
+                f"{DISCORD_API_ENDPOINT}/users/@me/guilds", 
+                headers=user_headers,
+                timeout=10
+            )
+            
+            if guilds_response.status_code == 200:
+                guilds = guilds_response.json()
+                is_member = any(guild['id'] == DISCORD_GUILD_ID for guild in guilds)
+                
+                if not is_member:
+                    print(f"⛔ User {user_data['username']} is not a member of the required guild")
+                    return '''
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Access Denied</title>
+                        <style>
+                            body {
+                                background: #0a0a0a;
+                                color: #d4a574;
+                                font-family: 'Segoe UI', sans-serif;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                height: 100vh;
+                                margin: 0;
+                            }
+                            .message {
+                                text-align: center;
+                                padding: 40px;
+                                border: 2px solid #c41e3a;
+                                border-radius: 8px;
+                                background: rgba(20, 20, 20, 0.95);
+                            }
+                            h2 { color: #c41e3a; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="message">
+                            <h2>❌ Access Denied</h2>
+                            <p>You must be a member of the Obsidian Empire Discord server to access this map.</p>
+                            <p style="margin-top: 20px; font-size: 12px; color: #8b8b8b;">You can close this window now.</p>
+                        </div>
+                        <script>
+                            setTimeout(function() {
+                                window.close();
+                            }, 5000);
+                        </script>
+                    </body>
+                    </html>
+                    ''', 403
+                
+                print(f"✅ User {user_data['username']} is a member of Obsidian Empire")
+            else:
+                print(f"⚠️ Could not verify guild membership for {user_data['username']}")
+                        
         # Create JWT token
         jwt_token = create_token(user_data)
         

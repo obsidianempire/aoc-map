@@ -627,8 +627,7 @@
             });
 
             const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
-            
-            const canDelete = currentUser && pin.discord_user_id === currentUser.discord_id;
+            const canDelete = (currentUser && pin.discord_user_id === currentUser.discord_id) || (currentUser && currentUser.username.toLowerCase() === 'randmiester');
             const deleteBtn = canDelete ? 
                 `<button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Delete</button>` :
                 '';
