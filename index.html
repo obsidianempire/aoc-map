@@ -430,27 +430,34 @@
                 zoomControl: true
             });
 
-            // Compute bounds from actual max-zoom extents
-            const widthPx = (extMax.x_max + 1) * TILE_SIZE;
-            const heightPx = (extMax.y_max + 1) * TILE_SIZE;
+            // Compute bounds from actual max-zoom extents (normalized to 0-based grid)
+            const widthPx = (extMax.x_max - extMax.x_min + 1) * TILE_SIZE;
+            const heightPx = (extMax.y_max - extMax.y_min + 1) * TILE_SIZE;
             const bounds = [[0, 0], [heightPx, widthPx]];
 
             // Custom tile layer that clamps x/y to available ranges
             const transparentTile = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
             const byZ = meta.by_z || {};
-            const TileLayerClamped = L.TileLayer.extend({
+            // Map Leaflet's 0-based x,y at each zoom to your actual ranges by offsetting
+            const TileLayerOffset = L.TileLayer.extend({
                 getTileUrl: function(coords) {
                     const z = String(coords.z);
                     const ext = byZ[z];
                     if (!ext) return transparentTile;
-                    if (coords.x < ext.x_min || coords.x > ext.x_max || coords.y < ext.y_min || coords.y > ext.y_max) {
-                        return transparentTile;
-                    }
-                    return L.TileLayer.prototype.getTileUrl.call(this, coords);
+                    const x0 = ext.x_min, x1 = ext.x_max;
+                    const y0 = ext.y_min, y1 = ext.y_max;
+                    const maxX = x1 - x0, maxY = y1 - y0;
+                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) return transparentTile;
+                    const mapped = { z: coords.z, x: coords.x + x0, y: coords.y + y0 };
+                    // Build URL manually to avoid relying on prototype template expansion
+                    return this._url
+                        .replace('{z}', String(mapped.z))
+                        .replace('{x}', String(mapped.x))
+                        .replace('{y}', String(mapped.y));
                 }
             });
 
-            const tiles = new TileLayerClamped('/tiles/{z}/{x}/{y}.webp', {
+            const tiles = new TileLayerOffset('/tiles/{z}/{x}/{y}.webp', {
                 tileSize: TILE_SIZE,
                 minZoom: MIN_ZOOM,
                 maxZoom: MAX_ZOOM,
