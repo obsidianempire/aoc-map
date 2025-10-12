@@ -125,6 +125,18 @@ def serve_map_image():
     """Serve the map image."""
     return send_from_directory('.', 'AshesMapVerra.jpg')
 
+@app.route('/tiles/<path:filename>')
+def serve_tiles(filename):
+    """Serve files from the local static tiles directory as an API endpoint.
+
+    Example: GET /tiles/6/12/34.jpg -> static/6/12/34.jpg
+    """
+    # send_from_directory already guards against path traversal
+    response = send_from_directory('static', filename)
+    # Encourage client/browser caching for tiles
+    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return response
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
