@@ -1,822 +1,634 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obsidian Empire - Verra Map</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Philosopher:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Philosopher', sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
-            overflow: hidden;
-        }
-        #map {
-            width: 100vw;
-            height: 100vh;
-            background: #0a0a0a;
-        }
-        
-        .header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: linear-gradient(180deg, rgba(10, 10, 10, 0.95) 0%, rgba(10, 10, 10, 0.7) 100%);
-            padding: 15px 30px;
-            border-bottom: 2px solid #8b4513;
-            box-shadow: 0 4px 20px rgba(139, 69, 19, 0.3);
-        }
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1800px;
-            margin: 0 auto;
-        }
-        .guild-title {
-            font-family: 'Cinzel', serif;
-            font-size: 28px;
-            font-weight: 700;
-            color: #d4a574;
-            text-shadow: 0 0 10px rgba(212, 165, 116, 0.5), 0 2px 4px rgba(0, 0, 0, 0.8);
-            letter-spacing: 2px;
-        }
-        .subtitle {
-            font-size: 12px;
-            color: #8b8b8b;
-            margin-top: 4px;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-        }
-        
-        .controls {
-            position: absolute;
-            top: 110px;
-            right: 20px;
-            z-index: 1000;
-            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
-            padding: 20px;
-            border-radius: 8px;
-            border: 2px solid #8b4513;
-            box-shadow: 0 8px 32px rgba(139, 69, 19, 0.4);
-            min-width: 280px;
-            backdrop-filter: blur(10px);
-        }
-        .controls h3 {
-            margin-bottom: 15px;
-            font-family: 'Cinzel', serif;
-            font-size: 18px;
-            color: #d4a574;
-            text-align: center;
-            text-shadow: 0 0 8px rgba(212, 165, 116, 0.4);
-            border-bottom: 1px solid #8b4513;
-            padding-bottom: 10px;
-        }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            margin-top: 10px;
-            border: 2px solid #8b4513;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 700;
-            font-family: 'Cinzel', serif;
-            letter-spacing: 1px;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
-            color: #fff;
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: linear-gradient(135deg, #a0522d 0%, #8b4513 100%);
-            box-shadow: 0 0 15px rgba(139, 69, 19, 0.6);
-            transform: translateY(-2px);
-        }
-        .btn-secondary {
-            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
-            color: #d4a574;
-        }
-        .btn-secondary:hover:not(:disabled) {
-            background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
-            border-color: #d4a574;
-            box-shadow: 0 0 15px rgba(212, 165, 116, 0.3);
-        }
-        .user-info {
-            text-align: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background: rgba(139, 69, 19, 0.2);
-            border-radius: 4px;
-        }
-        .user-label {
-            font-size: 12px;
-            color: #8b8b8b;
-        }
-        .user-name {
-            font-weight: bold;
-            color: #d4a574;
-            margin-top: 4px;
-        }
-        .login-note {
-            font-size: 11px;
-            color: #8b8b8b;
-            margin-top: 10px;
-            text-align: center;
-        }
-        .status {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
-            padding: 12px 18px;
-            border-radius: 6px;
-            font-size: 13px;
-            color: #d4a574;
-            border: 1px solid #8b4513;
-            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
-        }
-        .status.error {
-            color: #ff6b6b;
-            border-color: #ff6b6b;
-        }
-        
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 1000;
-            background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
-            padding: 20px;
-            border-radius: 8px;
-            border: 2px solid #8b4513;
-            box-shadow: 0 8px 32px rgba(139, 69, 19, 0.4);
-            backdrop-filter: blur(10px);
-        }
-        .legend h4 {
-            margin-bottom: 12px;
-            font-family: 'Cinzel', serif;
-            font-size: 16px;
-            color: #d4a574;
-            text-shadow: 0 0 8px rgba(212, 165, 116, 0.4);
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
-        .legend-color {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            margin-right: 10px;
-            border: 2px solid #d4a574;
-            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(5px);
-        }
-        .modal-content {
-            background: linear-gradient(135deg, rgba(30, 30, 30, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
-            margin: 10% auto;
-            padding: 30px;
-            border: 3px solid #8b4513;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 450px;
-            box-shadow: 0 10px 50px rgba(139, 69, 19, 0.5);
-        }
-        .modal-content h3 {
-            margin-bottom: 20px;
-            font-family: 'Cinzel', serif;
-            font-size: 22px;
-            color: #d4a574;
-            text-align: center;
-            text-shadow: 0 0 10px rgba(212, 165, 116, 0.5);
-        }
-        .modal-content input, .modal-content select, .modal-content textarea {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
-            border: 1px solid #8b4513;
-            border-radius: 6px;
-            background: rgba(20, 20, 20, 0.8);
-            color: #e0e0e0;
-            font-family: 'Philosopher', sans-serif;
-            font-size: 14px;
-        }
-        .modal-content textarea {
-            min-height: 80px;
-            resize: vertical;
-        }
-        .modal-content input:focus, .modal-content select:focus, .modal-content textarea:focus {
-            outline: none;
-            border-color: #d4a574;
-            box-shadow: 0 0 10px rgba(212, 165, 116, 0.3);
-        }
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-        }
-        .modal-buttons button {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #8b4513;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 700;
-            font-family: 'Cinzel', serif;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-        .close {
-            color: #8b8b8b;
-            float: right;
-            font-size: 32px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.3s;
-        }
-        .close:hover {
-            color: #d4a574;
-        }
-        
-        #addModeStatus {
-            margin-top: 15px;
-            padding: 10px;
-            font-size: 13px;
-            text-align: center;
-            border-radius: 4px;
-            background: rgba(30, 30, 30, 0.6);
-            border: 1px solid #8b4513;
-        }
-        
-        .leaflet-popup-content-wrapper {
-            background: linear-gradient(135deg, rgba(30, 30, 30, 0.98) 0%, rgba(20, 20, 20, 0.98) 100%);
-            color: #e0e0e0;
-            border: 2px solid #8b4513;
-            border-radius: 8px;
-            font-family: 'Philosopher', sans-serif;
-        }
-        .leaflet-popup-tip {
-            background: rgba(30, 30, 30, 0.98);
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="header-content">
-            <div>
-                <div class="guild-title">OBSIDIAN EMPIRE</div>
-                <div class="subtitle">Interactive Map of Verra</div>
-            </div>
-            <div style="text-align: right; color: #8b8b8b; font-size: 12px;">
-                <div>Phase 3 ~ Running in Ashes of Creation</div>
-            </div>
-        </div>
-    </div>
+from flask import Flask, request, jsonify, send_from_directory, redirect
+from flask_cors import CORS
+import os
+import requests
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps
 
-    <div id="map"></div>
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
+CORS(app, supports_credentials=True, origins=['*'])
+
+# Discord OAuth2 settings
+DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID', '')
+DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET', '')
+DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:5000/callback')
+DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')
+DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
+
+# Database configuration
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+USE_POSTGRES = bool(DATABASE_URL and DATABASE_URL.startswith('postgres'))
+
+if USE_POSTGRES:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    print("🐘 Using PostgreSQL database")
+else:
+    import sqlite3
+    DATABASE_URL = 'map_pins.db'
+    print("📁 Using SQLite database")
+
+def get_db():
+    """Connect to the database (SQLite or PostgreSQL)."""
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        db = sqlite3.connect(DATABASE_URL)
+        db.row_factory = sqlite3.Row
+        return db
+
+def dict_from_row(row):
+    """Convert database row to dictionary."""
+    if USE_POSTGRES:
+        return dict(row)
+    else:
+        return dict(row)
+
+def init_db():
+    """Initialize the database with pins table."""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        if USE_POSTGRES:
+            # PostgreSQL version
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pins (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lng REAL NOT NULL,
+                    discord_user_id TEXT NOT NULL,
+                    discord_username TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.commit()
+            print("✅ PostgreSQL database initialized successfully!")
+        else:
+            # SQLite version with migration support
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pins'")
+            table_exists = cursor.fetchone()
+            
+            if table_exists:
+                cursor.execute("PRAGMA table_info(pins)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                if 'discord_user_id' not in columns:
+                    print("🔄 Migrating SQLite database...")
+                    cursor.execute("ALTER TABLE pins RENAME TO pins_old")
+                    
+                    cursor.execute("""
+                        CREATE TABLE pins (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            title TEXT NOT NULL,
+                            description TEXT,
+                            category TEXT NOT NULL,
+                            lat REAL NOT NULL,
+                            lng REAL NOT NULL,
+                            discord_user_id TEXT NOT NULL,
+                            discord_username TEXT NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    cursor.execute("""
+                        INSERT INTO pins (id, title, description, category, lat, lng, discord_user_id, discord_username, created_at)
+                        SELECT id, title, description, category, lat, lng, 'legacy-user', 'Legacy User', 
+                               COALESCE(created_at, CURRENT_TIMESTAMP)
+                        FROM pins_old
+                    """)
+                    
+                    migrated = cursor.rowcount
+                    cursor.execute("DROP TABLE pins_old")
+                    print(f"✅ Migrated {migrated} existing pins")
+            else:
+                cursor.execute("""
+                    CREATE TABLE pins (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        category TEXT NOT NULL,
+                        lat REAL NOT NULL,
+                        lng REAL NOT NULL,
+                        discord_user_id TEXT NOT NULL,
+                        discord_username TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                print("✅ SQLite database initialized successfully!")
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        raise
+
+def create_token(user_data):
+    """Create a JWT token for the user."""
+    payload = {
+        'discord_id': user_data['id'],
+        'username': user_data['username'],
+        'exp': datetime.utcnow() + timedelta(days=7)
+    }
+    return jwt.encode(payload, app.secret_key, algorithm='HS256')
+
+def verify_token(token):
+    """Verify and decode a JWT token."""
+    try:
+        return jwt.decode(token, app.secret_key, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        print("Token expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        print(f"Invalid token: {e}")
+        return None
+
+def require_auth(f):
+    """Decorator to require authentication."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        
+        if not auth_header:
+            return jsonify({'error': 'No authorization token provided'}), 401
+        
+        token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else auth_header
+        user_data = verify_token(token)
+        
+        if not user_data:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        
+        request.user = user_data
+        return f(*args, **kwargs)
     
-    <div class="controls">
-        <h3>Map Controls</h3>
+    return decorated_function
+
+# ==================== ROUTES ====================
+
+@app.route('/')
+def home():
+    """Serve the interactive map HTML."""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/AshesMapVerra.jpg')
+def serve_map_image():
+    """Serve the map image."""
+    return send_from_directory('.', 'AshesMapVerra.jpg')
+
+@app.route('/tiles/<int:z>/<int:x>/<int:y>.webp')
+def serve_tile(z, x, y):
+    """Serve map tiles."""
+    try:
+        tile_path = f'tiles/{z}/{x}/{y}.webp'
+        if os.path.exists(tile_path):
+            return send_from_directory('tiles', f'{z}/{x}/{y}.webp')
+        else:
+            # Return 404 for missing tiles (frontend will show transparent)
+            return '', 404
+    except Exception as e:
+        print(f"Error serving tile {z}/{x}/{y}: {e}")
+        return '', 404
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint."""
+    return jsonify({
+        'status': 'healthy', 
+        'message': 'Map API is running',
+        'database': 'PostgreSQL' if USE_POSTGRES else 'SQLite',
+        'discord_configured': bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET)
+    })
+
+@app.route('/login', methods=['GET'])
+def login():
+    """Return Discord OAuth2 authorization URL."""
+    if not DISCORD_CLIENT_ID:
+        return jsonify({'error': 'Discord OAuth not configured'}), 500
+    
+    params = {
+        'client_id': DISCORD_CLIENT_ID,
+        'redirect_uri': DISCORD_REDIRECT_URI,
+        'response_type': 'code',
+        'scope': 'identify guilds'
+    }
+    
+    param_string = '&'.join([f'{k}={v}' for k, v in params.items()])
+    auth_url = f"{DISCORD_API_ENDPOINT}/oauth2/authorize?{param_string}"
+    
+    return jsonify({'auth_url': auth_url})
+
+@app.route('/callback')
+def callback():
+    """Handle Discord OAuth2 callback."""
+    code = request.args.get('code')
+    
+    if not code:
+        return '<html><body><p>Error: No authorization code received</p></body></html>', 400
+    
+    try:
+        # Exchange code for access token
+        token_data = {
+            'client_id': DISCORD_CLIENT_ID,
+            'client_secret': DISCORD_CLIENT_SECRET,
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': DISCORD_REDIRECT_URI
+        }
         
-        <div id="authSection">
-            <div id="notLoggedIn">
-                <button class="btn btn-primary" onclick="loginWithDiscord()">Login with Discord</button>
-                <p class="login-note">Login required to add/remove pins</p>
-            </div>
-            <div id="loggedIn" style="display: none;">
-                <div class="user-info">
-                    <div class="user-label">Logged in as</div>
-                    <div class="user-name" id="username"></div>
-                </div>
-                <button class="btn btn-secondary" onclick="logout()">Logout</button>
-            </div>
-        </div>
+        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        token_response = requests.post(
+            f"{DISCORD_API_ENDPOINT}/oauth2/token", 
+            data=token_data, 
+            headers=headers,
+            timeout=10
+        )
         
-        <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
-        <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
-        <div id="addModeStatus">Click mode: View Only (Login Required)</div>
-    </div>
-
-    <div class="legend">
-        <h4>Pin Categories</h4>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #c41e3a;"></div>
-            <span>World Boss</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #d4a574;"></div>
-            <span>Resource Node</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #4a90e2;"></div>
-            <span>POI</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #8b4513;"></div>
-            <span>Guild Location</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #6b4e71;"></div>
-            <span>Dungeon</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #5a9a9a;"></div>
-            <span>Other</span>
-        </div>
-    </div>
-
-    <div class="status" id="status">Ready</div>
-
-    <div id="pinModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closePinModal()">&times;</span>
-            <h3>Add New Pin</h3>
-            <input type="text" id="pinTitle" placeholder="Pin Title" maxlength="50">
-            <textarea id="pinDescription" placeholder="Description (optional)"></textarea>
-            <select id="pinCategory">
-                <option value="boss">World Boss</option>
-                <option value="resource">Resource Node</option>
-                <option value="poi">POI</option>
-                <option value="guild">Guild Location</option>
-                <option value="dungeon">Dungeon</option>
-                <option value="other">Other</option>
-            </select>
-            <div class="modal-buttons">
-                <button class="btn btn-primary" onclick="submitPin()">Add Pin</button>
-                <button class="btn btn-secondary" onclick="closePinModal()">Cancel</button>
+        if token_response.status_code != 200:
+            print(f"Token exchange failed: {token_response.text}")
+            return f'<html><body><p>Error getting access token: {token_response.status_code}</p></body></html>', 400
+        
+        token_json = token_response.json()
+        access_token = token_json['access_token']
+        
+        # Get user info from Discord
+        user_headers = {'Authorization': f"Bearer {access_token}"}
+        user_response = requests.get(
+            f"{DISCORD_API_ENDPOINT}/users/@me", 
+            headers=user_headers,
+            timeout=10
+        )
+        
+        if user_response.status_code != 200:
+            print(f"User info fetch failed: {user_response.text}")
+            return '<html><body><p>Error getting user info</p></body></html>', 400
+        
+        user_data = user_response.json()
+        print(f"✅ User logged in: {user_data['username']}")
+        
+        # Check guild membership if DISCORD_GUILD_ID is set
+        if DISCORD_GUILD_ID:
+            guilds_response = requests.get(
+                f"{DISCORD_API_ENDPOINT}/users/@me/guilds", 
+                headers=user_headers,
+                timeout=10
+            )
+            
+            if guilds_response.status_code == 200:
+                guilds = guilds_response.json()
+                is_member = any(guild['id'] == DISCORD_GUILD_ID for guild in guilds)
+                
+                if not is_member:
+                    print(f"⛔ User {user_data['username']} is not a member of the required guild")
+                    return '''
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Access Denied</title>
+                        <style>
+                            body {
+                                background: #0a0a0a;
+                                color: #d4a574;
+                                font-family: 'Segoe UI', sans-serif;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                height: 100vh;
+                                margin: 0;
+                            }
+                            .message {
+                                text-align: center;
+                                padding: 40px;
+                                border: 2px solid #c41e3a;
+                                border-radius: 8px;
+                                background: rgba(20, 20, 20, 0.95);
+                            }
+                            h2 { color: #c41e3a; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="message">
+                            <h2>❌ Access Denied</h2>
+                            <p>You must be a member of the Obsidian Empire Discord server to access this map.</p>
+                            <p style="margin-top: 20px; font-size: 12px; color: #8b8b8b;">You can close this window now.</p>
+                        </div>
+                        <script>
+                            setTimeout(function() {
+                                window.close();
+                            }, 5000);
+                        </script>
+                    </body>
+                    </html>
+                    ''', 403
+                
+                print(f"✅ User {user_data['username']} is a member of Obsidian Empire")
+            else:
+                print(f"⚠️ Could not verify guild membership for {user_data['username']}")
+        
+        # Create JWT token
+        jwt_token = create_token(user_data)
+        
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Authentication Successful</title>
+            <style>
+                body {{
+                    background: #0a0a0a;
+                    color: #d4a574;
+                    font-family: 'Segoe UI', sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }}
+                .message {{
+                    text-align: center;
+                    padding: 40px;
+                    border: 2px solid #8b4513;
+                    border-radius: 8px;
+                    background: rgba(20, 20, 20, 0.95);
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="message">
+                <h2>✅ Authentication Successful!</h2>
+                <p>Welcome, {user_data['username']}!</p>
+                <p>You can close this window now.</p>
             </div>
-        </div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-    <script>
-        let map;
-        let markers = {};
-        let addPinMode = false;
-        let tempLatLng = null;
-        let authToken = null;
-        let currentUser = null;
-
-        const API_URL = window.location.origin;
-        const DEBUG_TILES = true || (localStorage.getItem('debugTiles') === '1');
-        function dbg(...args) { if (DEBUG_TILES) { try { console.log('[tiles]', ...args); } catch(_) {} } }
-
-        const categoryColors = {
-            boss: '#c41e3a',
-            resource: '#d4a574',
-            poi: '#4a90e2',
-            guild: '#8b4513',
-            dungeon: '#6b4e71',
-            other: '#5a9a9a'
-        };
-
-        // Initialize map
-        async function initMap() {
-            const TILE_SIZE = 512;
-
-            // Fetch tile metadata from server to clamp requests
-            let meta;
-            try {
-                dbg('fetch /tile-metadata start');
-                const res = await fetch('/tile-metadata');
-                meta = await res.json();
-                dbg('tile-metadata:', meta);
-            } catch (e) {
-                console.error('[tiles] failed to fetch /tile-metadata', e);
-                meta = { min_z: 1, max_z: 8, by_z: { '1': {x_min:0,x_max:1,y_min:0,y_max:1} } };
-            }
-
-            const MIN_ZOOM = Number(meta.min_z ?? 1);
-            const MAX_ZOOM = Number(meta.max_z ?? 8);
-            const maxZKey = String(MAX_ZOOM);
-            const minZKey = String(MIN_ZOOM);
-            const extMin = meta.by_z && meta.by_z[minZKey]
-                ? meta.by_z[minZKey]
-                : { x_min: 0, x_max: 0, y_min: 0, y_max: 0 };
-            const extMax = meta.by_z && meta.by_z[maxZKey]
-                ? meta.by_z[maxZKey]
-                : extMin;
-
-            map = L.map('map', {
-                crs: L.CRS.Simple,
-                minZoom: MIN_ZOOM,
-                maxZoom: MAX_ZOOM,
-                zoom: MIN_ZOOM,
-                zoomSnap: 1,
-                zoomDelta: 1,
-                wheelPxPerZoomLevel: 120,
-                zoomControl: true
-            });
-            dbg('map created', { MIN_ZOOM, MAX_ZOOM, startZoom: MIN_ZOOM });
-
-            // Compute world bounds using the actual max-zoom extents
-            const tilesAcrossMax = Math.max(1, extMax.x_max - extMax.x_min + 1);
-            const tilesDownMax = Math.max(1, extMax.y_max - extMax.y_min + 1);
-            const worldWidthPx = tilesAcrossMax * TILE_SIZE;
-            const worldHeightPx = tilesDownMax * TILE_SIZE;
-            const bounds = [[0, 0], [worldHeightPx, worldWidthPx]];
-            dbg('computed world bounds (px)', { worldWidthPx, worldHeightPx, bounds, extMin, extMax });
-
-            // Custom GridLayer that maps Leaflet's 0-based grid at each zoom
-            // to your dataset's per-zoom extents and offsets.
-            const transparentTile = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-            const byZ = meta.by_z || {};
-
-            const DatasetGridLayer = L.GridLayer.extend({
-                initialize: function(opts) {
-                    L.setOptions(this, opts);
-                },
-                getTileSize: function() {
-                    const z = this._map ? this._map.getZoom() : MIN_ZOOM;
-                    const ext = byZ[String(z)];
-                    const tilesAcross = ext ? (ext.x_max - ext.x_min + 1) : tilesAcrossMax;
-                    const tilesDown = ext ? (ext.y_max - ext.y_min + 1) : tilesDownMax;
-                    const w = Math.max(1, Math.round(worldWidthPx / tilesAcross));
-                    const h = Math.max(1, Math.round(worldHeightPx / tilesDown));
-                    dbg('getTileSize', { z, tilesAcross, tilesDown, w, h });
-                    return L.point(w, h);
-                },
-                createTile: function(coords, done) {
-                    const tile = document.createElement('img');
-                    tile.alt = '';
-                    tile.decoding = 'async';
-                    tile.loading = 'lazy';
-                    tile.crossOrigin = '';
-
-                    const ext = byZ[String(coords.z)];
-                    if (!ext) {
-                        dbg('no extents for z -> transparent', coords);
-                        tile.src = transparentTile;
-                        done(null, tile);
-                        return tile;
-                    }
-                    const x0 = ext.x_min, x1 = ext.x_max;
-                    const y0 = ext.y_min, y1 = ext.y_max;
-                    const maxX = x1 - x0, maxY = y1 - y0;
-                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) {
-                        dbg('OOB tile -> transparent', { coords, ext });
-                        tile.src = transparentTile;
-                        done(null, tile);
-                        return tile;
-                    }
-
-                    const mappedX = coords.x + x0;
-                    const mappedY = coords.y + y0;
-                    const url = `/tiles/${coords.z}/${mappedX}/${mappedY}.webp`;
-                    tile.onload = (ev) => { dbg('tile load ok', url); done(null, tile); };
-                    tile.onerror = (ev) => { console.error('[tiles] tile load error', url); done(null, tile); };
-                    tile.src = url;
-                    dbg('tile req', coords, '->', url);
-                    return tile;
-                }
-            });
-
-            const crsBounds = L.latLngBounds([[0, 0], [worldHeightPx, worldWidthPx]]);
-            const tiles = new DatasetGridLayer({
-                tileSize: TILE_SIZE,
-                noWrap: true,
-                updateWhenZooming: false,
-                keepBuffer: 1,
-                bounds: crsBounds,
-                minZoom: MIN_ZOOM,
-                maxZoom: MAX_ZOOM
-            });
-            tiles.addTo(map);
-            window.tilesLayer = tiles;
-            window.tilesMeta = meta;
-            window.tilesExtByZ = byZ;
-
-            map.setMaxBounds(bounds);
-            map.options.maxBoundsViscosity = 1.0;
-            const mapCenter = L.latLng(worldHeightPx / 2, worldWidthPx / 2);
-            map.setView(mapCenter, MIN_ZOOM, { animate: false, reset: true });
-            map.fitBounds(bounds, { animate: false, maxZoom: MIN_ZOOM });
-            map.setZoom(MIN_ZOOM);
-            dbg('setView to map center at min zoom', { mapCenter, MIN_ZOOM, bounds });
-
-            // Map event diagnostics
-            map.on('zoomstart', () => dbg('zoomstart', map.getZoom()));
-            map.on('zoomend', () => dbg('zoomend', map.getZoom(), 'center', map.getCenter()));
-            map.on('moveend', () => {
-                const pb = map.getPixelBounds();
-                dbg('moveend center', map.getCenter(), 'pixelBounds', { min: pb.min, max: pb.max });
-            });
-
-            map.on('click', function(e) {
-                if (addPinMode && authToken) {
-                    tempLatLng = e.latlng;
-                    showPinModal();
-                }
-            });
-
-            dbg('initMap complete', { MIN_ZOOM, MAX_ZOOM, extMax });
-            showStatus('Map initialized (tiles)');
-            checkAuth();
-            loadPins();
-
-            // Smoke-test a known tile to verify network + route
-            try {
-                const testUrl = '/tiles/1/0/0.webp';
-                const img = new Image();
-                img.onload = () => dbg('smoke-test tile load ok', testUrl);
-                img.onerror = () => console.error('[tiles] smoke-test tile load error', testUrl);
-                img.src = testUrl;
-            } catch (e) {
-                console.error('[tiles] smoke-test setup failed', e);
-            }
-        }
-
-        // Check for existing auth token
-        function checkAuth() {
-            authToken = localStorage.getItem('discord_token');
-            if (authToken) {
-                verifyToken();
-            }
-        }
-
-        async function verifyToken() {
-            try {
-                const response = await fetch(`${API_URL}/verify`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.authenticated) {
-                        currentUser = data;
-                        updateAuthUI(true, data.username);
-                        return;
-                    }
-                }
-            } catch (error) {
-                console.error('Token verification failed:', error);
-            }
-            
-            logout();
-        }
-
-        function updateAuthUI(loggedIn, username = '') {
-            document.getElementById('notLoggedIn').style.display = loggedIn ? 'none' : 'block';
-            document.getElementById('loggedIn').style.display = loggedIn ? 'block' : 'none';
-            document.getElementById('username').textContent = username;
-            document.getElementById('toggleAddBtn').disabled = !loggedIn;
-            
-            if (!loggedIn) {
-                addPinMode = false;
-                document.getElementById('addModeStatus').textContent = 'Click mode: View Only (Login Required)';
-                document.getElementById('addModeStatus').style.color = '#8b8b8b';
-            }
-        }
-
-        async function loginWithDiscord() {
-            try {
-                const response = await fetch(`${API_URL}/login`);
-                const data = await response.json();
+            <script>
+                window.opener.postMessage({{
+                    type: 'discord_auth',
+                    token: '{jwt_token}',
+                    username: '{user_data['username']}'
+                }}, '*');
                 
-                if (data.error) {
-                    showStatus(data.error, true);
-                    return;
-                }
-                
-                const popup = window.open(data.auth_url, 'Discord Login', 'width=500,height=700');
-                
-                window.addEventListener('message', function(event) {
-                    if (event.data.type === 'discord_auth') {
-                        authToken = event.data.token;
-                        currentUser = { username: event.data.username };
-                        localStorage.setItem('discord_token', authToken);
-                        updateAuthUI(true, event.data.username);
-                        showStatus('Logged in successfully!');
-                        loadPins();
-                    }
-                });
-            } catch (error) {
-                showStatus('Login failed', true);
-                console.error('Login error:', error);
-            }
-        }
+                setTimeout(function() {{
+                    window.close();
+                }}, 2000);
+            </script>
+        </body>
+        </html>
+        '''
+        
+    except Exception as e:
+        print(f"❌ OAuth callback error: {e}")
+        return f'<html><body><p>Error during authentication: {str(e)}</p></body></html>', 500
 
-        function logout() {
-            authToken = null;
-            currentUser = null;
-            localStorage.removeItem('discord_token');
-            updateAuthUI(false);
-            showStatus('Logged out');
-            loadPins();
-        }
+@app.route('/verify', methods=['GET'])
+def verify():
+    """Verify a token and return user info."""
+    auth_header = request.headers.get('Authorization')
+    
+    if not auth_header:
+        return jsonify({'authenticated': False}), 401
+    
+    token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else auth_header
+    user_data = verify_token(token)
+    
+    if not user_data:
+        return jsonify({'authenticated': False}), 401
+    
+    return jsonify({
+        'authenticated': True,
+        'discord_id': user_data['discord_id'],
+        'username': user_data['username']
+    })
 
-        function toggleAddMode() {
-            if (!authToken) {
-                showStatus('Please login first', true);
-                return;
-            }
-            
-            addPinMode = !addPinMode;
-            const status = document.getElementById('addModeStatus');
-            if (addPinMode) {
-                status.textContent = 'Click mode: ADD PIN (click map to add)';
-                status.style.color = '#d4a574';
-                status.style.borderColor = '#d4a574';
-            } else {
-                status.textContent = 'Click mode: View Only';
-                status.style.color = '#8b8b8b';
-                status.style.borderColor = '#8b4513';
-            }
-        }
+@app.route('/pins', methods=['GET'])
+def get_pins():
+    """Get all pins (no auth required)."""
+    try:
+        db = get_db()
+        
+        if USE_POSTGRES:
+            cursor = db.cursor(cursor_factory=RealDictCursor)
+            cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
+            pins = cursor.fetchall()
+            cursor.close()
+        else:
+            cursor = db.cursor()
+            cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
+            pins = [dict(row) for row in cursor.fetchall()]
+            cursor.close()
+        
+        db.close()
+        
+        print(f"📍 Returning {len(pins)} pins")
+        return jsonify(pins)
+        
+    except Exception as e:
+        print(f"❌ Error getting pins: {e}")
+        return jsonify({'error': str(e)}), 500
 
-        function showPinModal() {
-            document.getElementById('pinModal').style.display = 'block';
-            document.getElementById('pinTitle').value = '';
-            document.getElementById('pinDescription').value = '';
-            document.getElementById('pinCategory').value = 'poi';
-        }
+@app.route('/pins', methods=['POST'])
+@require_auth
+def create_pin():
+    """Create a new pin (auth required)."""
+    try:
+        data = request.json
+        print(f"📝 Creating pin: {data.get('title')} by {request.user['username']}")
+        
+        if not data.get('title'):
+            return jsonify({'error': 'Title is required'}), 400
+        
+        if not data.get('category'):
+            return jsonify({'error': 'Category is required'}), 400
+        
+        if data.get('lat') is None or data.get('lng') is None:
+            return jsonify({'error': 'Coordinates are required'}), 400
+        
+        db = get_db()
+        cursor = db.cursor()
+        
+        if USE_POSTGRES:
+            cursor.execute('''
+                INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+            ''', (
+                data['title'],
+                data.get('description', ''),
+                data['category'],
+                float(data['lat']),
+                float(data['lng']),
+                request.user['discord_id'],
+                request.user['username']
+            ))
+            pin = cursor.fetchone()
+        else:
+            cursor.execute('''
+                INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data['title'],
+                data.get('description', ''),
+                data['category'],
+                float(data['lat']),
+                float(data['lng']),
+                request.user['discord_id'],
+                request.user['username']
+            ))
+            cursor.execute('SELECT * FROM pins WHERE id = ?', (cursor.lastrowid,))
+            pin = dict(cursor.fetchone())
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+        pin_dict = dict(pin) if USE_POSTGRES else pin
+        print(f"✅ Pin created: ID {pin_dict['id']}")
+        return jsonify(pin_dict), 201
+        
+    except Exception as e:
+        print(f"❌ Error creating pin: {e}")
+        return jsonify({'error': str(e)}), 500
 
-        function closePinModal() {
-            document.getElementById('pinModal').style.display = 'none';
-            tempLatLng = null;
-        }
+@app.route('/pins/<int:pin_id>', methods=['DELETE'])
+@require_auth
+def delete_pin(pin_id):
+    """Delete a pin (only if user owns it or is admin)."""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Check if pin exists
+        if USE_POSTGRES:
+            cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
+        else:
+            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
+        
+        pin = cursor.fetchone()
+        
+        if not pin:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'Pin not found'}), 404
+        
+        pin_dict = dict(pin)
+        
+        # Check if user is admin
+        is_admin = request.user['username'].lower() == 'randmiester'
+        
+        # Check ownership or admin status
+        if pin_dict['discord_user_id'] != request.user['discord_id'] and not is_admin:
+            cursor.close()
+            db.close()
+            print(f"⛔ User {request.user['username']} tried to delete pin owned by {pin_dict['discord_username']}")
+            return jsonify({'error': 'You can only delete your own pins'}), 403
+        
+        # Delete the pin
+        if USE_POSTGRES:
+            cursor.execute('DELETE FROM pins WHERE id = %s', (pin_id,))
+        else:
+            cursor.execute('DELETE FROM pins WHERE id = ?', (pin_id,))
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+        if is_admin and pin_dict['discord_user_id'] != request.user['discord_id']:
+            print(f"👑 Admin {request.user['username']} deleted pin {pin_id} owned by {pin_dict['discord_username']}")
+        else:
+            print(f"🗑️ Pin {pin_id} deleted by {request.user['username']}")
+        
+        return jsonify({'message': 'Pin deleted successfully'})
+        
+    except Exception as e:
+        print(f"❌ Error deleting pin: {e}")
+        return jsonify({'error': str(e)}), 500
 
-        async function submitPin() {
-            const title = document.getElementById('pinTitle').value.trim();
-            const description = document.getElementById('pinDescription').value.trim();
-            const category = document.getElementById('pinCategory').value;
+@app.route('/pins/<int:pin_id>', methods=['PUT'])
+@require_auth
+def update_pin(pin_id):
+    """Update a pin (only if user owns it)."""
+    try:
+        data = request.json
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Check if pin exists
+        if USE_POSTGRES:
+            cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
+        else:
+            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
+        
+        pin = cursor.fetchone()
+        
+        if not pin:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'Pin not found'}), 404
+        
+        pin_dict = dict(pin)
+        
+        # Check ownership
+        if pin_dict['discord_user_id'] != request.user['discord_id']:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'You can only edit your own pins'}), 403
+        
+        # Update pin
+        if USE_POSTGRES:
+            cursor.execute('''
+                UPDATE pins 
+                SET title = %s, description = %s, category = %s, lat = %s, lng = %s
+                WHERE id = %s
+                RETURNING *
+            ''', (
+                data.get('title', pin_dict['title']),
+                data.get('description', pin_dict['description']),
+                data.get('category', pin_dict['category']),
+                data.get('lat', pin_dict['lat']),
+                data.get('lng', pin_dict['lng']),
+                pin_id
+            ))
+            updated_pin = cursor.fetchone()
+        else:
+            cursor.execute('''
+                UPDATE pins 
+                SET title = ?, description = ?, category = ?, lat = ?, lng = ?
+                WHERE id = ?
+            ''', (
+                data.get('title', pin_dict['title']),
+                data.get('description', pin_dict['description']),
+                data.get('category', pin_dict['category']),
+                data.get('lat', pin_dict['lat']),
+                data.get('lng', pin_dict['lng']),
+                pin_id
+            ))
+            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
+            updated_pin = dict(cursor.fetchone())
+        
+        db.commit()
+        cursor.close()
+        db.close()
+        
+        result = dict(updated_pin) if USE_POSTGRES else updated_pin
+        print(f"✏️ Pin {pin_id} updated by {request.user['username']}")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Error updating pin: {e}")
+        return jsonify({'error': str(e)}), 500
 
-            if (!title) {
-                alert('Please enter a title for the pin');
-                return;
-            }
+# ==================== STARTUP ====================
 
-            if (!authToken) {
-                alert('Please login first');
-                return;
-            }
-
-            const pinData = {
-                title: title,
-                description: description,
-                category: category,
-                lat: tempLatLng.lat,
-                lng: tempLatLng.lng
-            };
-
-            try {
-                const response = await fetch(`${API_URL}/pins`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify(pinData)
-                });
-
-                if (response.ok) {
-                    const newPin = await response.json();
-                    addMarkerToMap(newPin);
-                    closePinModal();
-                    showStatus('Pin added successfully!');
-                } else {
-                    const error = await response.json();
-                    showStatus(error.error || 'Error adding pin', true);
-                }
-            } catch (error) {
-                showStatus('Error connecting to server', true);
-                console.error('Error:', error);
-            }
-        }
-
-        async function loadPins() {
-            try {
-                showStatus('Loading pins...');
-                const response = await fetch(`${API_URL}/pins`);
-                
-                if (response.ok) {
-                    const pins = await response.json();
-                    
-                    Object.values(markers).forEach(marker => map.removeLayer(marker));
-                    markers = {};
-                    
-                    pins.forEach(pin => addMarkerToMap(pin));
-                    showStatus(`Loaded ${pins.length} pins`);
-                } else {
-                    showStatus('Error loading pins', true);
-                }
-            } catch (error) {
-                showStatus('Error connecting to server', true);
-                console.error('Error:', error);
-            }
-        }
-
-        function addMarkerToMap(pin) {
-            const color = categoryColors[pin.category] || categoryColors.other;
-            
-            const icon = L.divIcon({
-                className: 'custom-pin',
-                html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d4a574; box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px ${color}40;"></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-            });
-
-            const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
-            const canDelete = (currentUser && pin.discord_user_id === currentUser.discord_id) || (currentUser && currentUser.username.toLowerCase() === 'randmiester');
-            const deleteBtn = canDelete ? 
-                `<button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Delete</button>` :
-                '';
-            
-            const popupContent = `
-                <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
-                    <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
-                    ${pin.description ? pin.description + '<br>' : ''}
-                    <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
-                    <div style="font-size: 10px; color: #666; margin-top: 4px;">Added by: ${pin.discord_username}</div>
-                    ${deleteBtn}
-                </div>
-            `;
-            
-            marker.bindPopup(popupContent);
-            markers[pin.id] = marker;
-        }
-
-        async function deletePin(pinId) {
-            if (!confirm('Are you sure you want to delete this pin?')) {
-                return;
-            }
-
-            if (!authToken) {
-                showStatus('Please login first', true);
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_URL}/pins/${pinId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-
-                if (response.ok) {
-                    if (markers[pinId]) {
-                        map.removeLayer(markers[pinId]);
-                        delete markers[pinId];
-                    }
-                    showStatus('Pin deleted successfully');
-                } else {
-                    const error = await response.json();
-                    showStatus(error.error || 'Error deleting pin', true);
-                }
-            } catch (error) {
-                showStatus('Error connecting to server', true);
-                console.error('Error:', error);
-            }
-        }
-
-        function showStatus(message, isError = false) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = isError ? 'status error' : 'status';
-            
-            setTimeout(() => {
-                status.textContent = 'Ready';
-                status.className = 'status';
-            }, 3000);
-        }
-
-        window.onload = function() {
-            initMap();
-        };
-    </script>
-</body>
-</html>
+if __name__ == '__main__':
+    init_db()
+    print("🚀 Starting development server...")
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+else:
+    init_db()
+    print("🚀 Running with Gunicorn...")
