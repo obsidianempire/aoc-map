@@ -405,6 +405,10 @@
             const TILE_SIZE = 256;
             const MIN_ZOOM = 1;   // your Z folders start at 1
             const MAX_ZOOM = 8;   // your Z folders end at 8
+            // Your tiles at z=8 have x,y starting at 0 and not exceeding ~300
+            // Set these to your actual maximum indices at the highest zoom
+            const X_MAX_ZMAX = 300; // highest x index at z=8
+            const Y_MAX_ZMAX = 300; // highest y index at z=8
 
             map = L.map('map', {
                 crs: L.CRS.Simple,
@@ -417,12 +421,9 @@
                 zoomControl: true
             });
 
-            // Compute bounds at max zoom assuming a full XYZ pyramid
-            // tilesAcross/tilesDown at z=MAX_ZOOM are both 2^MAX_ZOOM when x/y start at 0
-            const TILES_ACROSS_AT_ZMAX = Math.pow(2, MAX_ZOOM);
-            const TILES_DOWN_AT_ZMAX = Math.pow(2, MAX_ZOOM);
-            const widthPx = TILES_ACROSS_AT_ZMAX * TILE_SIZE;
-            const heightPx = TILES_DOWN_AT_ZMAX * TILE_SIZE;
+            // Compute bounds at max zoom from your actual tile extents
+            const widthPx = (X_MAX_ZMAX + 1) * TILE_SIZE;
+            const heightPx = (Y_MAX_ZMAX + 1) * TILE_SIZE;
             const bounds = [[0, 0], [heightPx, widthPx]];
 
             // Use API-served tiles for caching, or switch to '/static/tiles/{z}/{x}/{y}.webp'
@@ -433,12 +434,17 @@
                 minNativeZoom: MIN_ZOOM,
                 maxNativeZoom: MAX_ZOOM,
                 noWrap: true,
+                // Most tile tools output XYZ (origin top-left). If your tiles appear
+                // vertically flipped, set tms: true.
+                // tms: true,
                 updateWhenZooming: false,
                 keepBuffer: 4
             });
             tiles.addTo(map);
 
             map.setMaxBounds(bounds);  // keep panning within the image
+            map.setMaxBounds(bounds);  // apply viscosity for stronger clamping
+            map.options.maxBoundsViscosity = 1.0;
             map.fitBounds(bounds);
 
             map.on('click', function(e) {

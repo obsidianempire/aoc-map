@@ -12,10 +12,10 @@ MAXZOOM = 50
 X_MIN, X_MAX = 0, 10
 Y_MIN, Y_MAX = 0, 10
 
-for zoom in range(1,MAXZOOM):
+for zoom in range(8,MAXZOOM):
 
-    xMax = zoom * X_MAX
-    yMax = zoom * Y_MAX
+    xMax = 400
+    yMax = 400
     for x in range(X_MIN, xMax + 1):
         for y in range(Y_MIN, yMax + 1):            
             url = TILE_URL.format(z=zoom, x=x, y=y)
