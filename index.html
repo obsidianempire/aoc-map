@@ -403,8 +403,8 @@
         function initMap() {
             // Tile setup: adjust min/max zoom to match your generated tiles
             const TILE_SIZE = 256;
-            const MIN_ZOOM = 1;   // set to 0 if you have z=0 tiles
-            const MAX_ZOOM = 6;   // adjust to highest z level you generated
+            const MIN_ZOOM = 1;   // your Z folders start at 1
+            const MAX_ZOOM = 8;   // your Z folders end at 8
 
             map = L.map('map', {
                 crs: L.CRS.Simple,
@@ -417,17 +417,22 @@
                 zoomControl: true
             });
 
-            // Compute bounds at max zoom (assuming a square tile pyramid)
-            const size = TILE_SIZE * Math.pow(2, MAX_ZOOM);
-            const bounds = [[0, 0], [size, size]];
+            // Compute bounds at max zoom assuming a full XYZ pyramid
+            // tilesAcross/tilesDown at z=MAX_ZOOM are both 2^MAX_ZOOM when x/y start at 0
+            const TILES_ACROSS_AT_ZMAX = Math.pow(2, MAX_ZOOM);
+            const TILES_DOWN_AT_ZMAX = Math.pow(2, MAX_ZOOM);
+            const widthPx = TILES_ACROSS_AT_ZMAX * TILE_SIZE;
+            const heightPx = TILES_DOWN_AT_ZMAX * TILE_SIZE;
+            const bounds = [[0, 0], [heightPx, widthPx]];
 
             // Use API-served tiles for caching, or switch to '/static/tiles/{z}/{x}/{y}.webp'
             const tiles = L.tileLayer('/tiles/{z}/{x}/{y}.webp', {
                 tileSize: TILE_SIZE,
                 minZoom: MIN_ZOOM,
                 maxZoom: MAX_ZOOM,
+                minNativeZoom: MIN_ZOOM,
+                maxNativeZoom: MAX_ZOOM,
                 noWrap: true,
-                bounds: bounds,
                 updateWhenZooming: false,
                 keepBuffer: 4
             });

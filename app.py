@@ -129,10 +129,10 @@ def serve_map_image():
 def serve_tiles(filename):
     """Serve files from the local static tiles directory as an API endpoint.
 
-    Example: GET /tiles/6/12/34.jpg -> static/6/12/34.jpg
+    Example: GET /tiles/6/12/34.webp -> static/tiles/6/12/34.webp
     """
     # send_from_directory already guards against path traversal
-    response = send_from_directory('static', filename)
+    response = send_from_directory(os.path.join('static', 'tiles'), filename)
     # Encourage client/browser caching for tiles
     response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     return response
