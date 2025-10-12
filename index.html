@@ -401,25 +401,39 @@
 
         // Initialize map
         function initMap() {
-            const imageUrl = '/AshesMapVerra.jpg';
-            const imgWidth = 4000;  // ← actual pixels
-            const imgHeight = 2824; // ← actual pixels
+            // Tile setup: adjust min/max zoom to match your generated tiles
+            const TILE_SIZE = 256;
+            const MIN_ZOOM = 1;   // set to 0 if you have z=0 tiles
+            const MAX_ZOOM = 6;   // adjust to highest z level you generated
 
             map = L.map('map', {
                 crs: L.CRS.Simple,
-                minZoom: -2,
-                maxZoom: 12,
-                zoom: 0,
-                zoomSnap: 0.25,   // quarter steps
-                zoomDelta: 0.25,   // scroll/keyboard step size
-                wheelPxPerZoomLevel: 40,
+                minZoom: MIN_ZOOM,
+                maxZoom: MAX_ZOOM,
+                zoom: MIN_ZOOM,
+                zoomSnap: 1,
+                zoomDelta: 1,
+                wheelPxPerZoomLevel: 120,
                 zoomControl: true
             });
 
-            const bounds = [[0, 0], [imgHeight, imgWidth]];
-            
-            L.imageOverlay(imageUrl, bounds).addTo(map);
-             map.setMaxBounds(bounds);  // keep panning within the image
+            // Compute bounds at max zoom (assuming a square tile pyramid)
+            const size = TILE_SIZE * Math.pow(2, MAX_ZOOM);
+            const bounds = [[0, 0], [size, size]];
+
+            // Use API-served tiles for caching, or switch to '/static/tiles/{z}/{x}/{y}.webp'
+            const tiles = L.tileLayer('/tiles/{z}/{x}/{y}.webp', {
+                tileSize: TILE_SIZE,
+                minZoom: MIN_ZOOM,
+                maxZoom: MAX_ZOOM,
+                noWrap: true,
+                bounds: bounds,
+                updateWhenZooming: false,
+                keepBuffer: 4
+            });
+            tiles.addTo(map);
+
+            map.setMaxBounds(bounds);  // keep panning within the image
             map.fitBounds(bounds);
 
             map.on('click', function(e) {
@@ -429,7 +443,7 @@
                 }
             });
 
-            showStatus('Map initialized');
+            showStatus('Map initialized (tiles)');
             checkAuth();
             loadPins();
         }
