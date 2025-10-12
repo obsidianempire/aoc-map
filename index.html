@@ -430,39 +430,66 @@
                 zoomControl: true
             });
 
-            // Compute bounds from actual max-zoom extents (normalized to 0-based grid)
-            const widthPx = (extMax.x_max - extMax.x_min + 1) * TILE_SIZE;
-            const heightPx = (extMax.y_max - extMax.y_min + 1) * TILE_SIZE;
-            const bounds = [[0, 0], [heightPx, widthPx]];
+            // Compute world bounds using the actual max-zoom extents
+            const worldWidthPx = (extMax.x_max - extMax.x_min + 1) * TILE_SIZE;
+            const worldHeightPx = (extMax.y_max - extMax.y_min + 1) * TILE_SIZE;
+            const bounds = [[0, 0], [worldHeightPx, worldWidthPx]];
 
-            // Custom tile layer that clamps x/y to available ranges
+            // Custom GridLayer that maps Leaflet's 0-based grid at each zoom
+            // to your dataset's per-zoom extents and offsets.
             const transparentTile = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
             const byZ = meta.by_z || {};
-            // Map Leaflet's 0-based x,y at each zoom to your actual ranges by offsetting
-            const TileLayerOffset = L.TileLayer.extend({
-                getTileUrl: function(coords) {
-                    const z = String(coords.z);
-                    const ext = byZ[z];
-                    if (!ext) return transparentTile;
+
+            const DatasetGridLayer = L.GridLayer.extend({
+                initialize: function(opts) {
+                    L.setOptions(this, opts);
+                },
+                getTileSize: function() {
+                    // Determine dynamic tile size so that the number of tiles across/down
+                    // matches your dataset at the current zoom, while keeping a fixed world size.
+                    const z = this._map.getZoom();
+                    const ext = byZ[String(z)];
+                    // Fallback to 1x1 to avoid divide-by-zero if ext missing
+                    const tilesAcross = ext ? (ext.x_max - ext.x_min + 1) : 1;
+                    const tilesDown = ext ? (ext.y_max - ext.y_min + 1) : 1;
+                    const w = Math.max(1, Math.round(worldWidthPx / tilesAcross));
+                    const h = Math.max(1, Math.round(worldHeightPx / tilesDown));
+                    return L.point(w, h);
+                },
+                createTile: function(coords, done) {
+                    const tile = document.createElement('img');
+                    tile.alt = '';
+                    tile.decoding = 'async';
+                    tile.loading = 'lazy';
+                    tile.crossOrigin = '';
+
+                    const ext = byZ[String(coords.z)];
+                    if (!ext) {
+                        tile.src = transparentTile;
+                        done(null, tile);
+                        return tile;
+                    }
                     const x0 = ext.x_min, x1 = ext.x_max;
                     const y0 = ext.y_min, y1 = ext.y_max;
                     const maxX = x1 - x0, maxY = y1 - y0;
-                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) return transparentTile;
-                    const mapped = { z: coords.z, x: coords.x + x0, y: coords.y + y0 };
-                    // Build URL manually to avoid relying on prototype template expansion
-                    return this._url
-                        .replace('{z}', String(mapped.z))
-                        .replace('{x}', String(mapped.x))
-                        .replace('{y}', String(mapped.y));
+                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) {
+                        tile.src = transparentTile;
+                        done(null, tile);
+                        return tile;
+                    }
+
+                    const mappedX = coords.x + x0;
+                    const mappedY = coords.y + y0;
+                    const url = `/tiles/${coords.z}/${mappedX}/${mappedY}.webp`;
+                    tile.onload = () => done(null, tile);
+                    tile.onerror = () => done(null, tile);
+                    tile.src = url;
+                    try { console.debug('tile req', coords, '->', url); } catch (_) {}
+                    return tile;
                 }
             });
 
-            const tiles = new TileLayerOffset('/tiles/{z}/{x}/{y}.webp', {
-                tileSize: TILE_SIZE,
-                minZoom: MIN_ZOOM,
-                maxZoom: MAX_ZOOM,
-                minNativeZoom: MIN_ZOOM,
-                maxNativeZoom: MAX_ZOOM,
+            const tiles = new DatasetGridLayer({
                 noWrap: true,
                 updateWhenZooming: false,
                 keepBuffer: 4
