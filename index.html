@@ -400,15 +400,24 @@
         };
 
         // Initialize map
-        function initMap() {
-            // Tile setup: adjust min/max zoom to match your generated tiles
+        async function initMap() {
             const TILE_SIZE = 256;
-            const MIN_ZOOM = 1;   // your Z folders start at 1
-            const MAX_ZOOM = 8;   // your Z folders end at 8
-            // Your tiles at z=8 have x,y starting at 0 and not exceeding ~300
-            // Set these to your actual maximum indices at the highest zoom
-            const X_MAX_ZMAX = 300; // highest x index at z=8
-            const Y_MAX_ZMAX = 300; // highest y index at z=8
+
+            // Fetch tile metadata from server to clamp requests
+            let meta;
+            try {
+                const res = await fetch('/tile-metadata');
+                meta = await res.json();
+            } catch (_) {
+                meta = { min_z: 1, max_z: 8, by_z: { '1': {x_min:0,x_max:1,y_min:0,y_max:1} } };
+            }
+
+            const MIN_ZOOM = Number(meta.min_z ?? 1);
+            const MAX_ZOOM = Number(meta.max_z ?? 8);
+            const maxZKey = String(MAX_ZOOM);
+            const extMax = meta.by_z && meta.by_z[maxZKey]
+                ? meta.by_z[maxZKey]
+                : { x_min: 0, x_max: 300, y_min: 0, y_max: 300 };
 
             map = L.map('map', {
                 crs: L.CRS.Simple,
@@ -421,29 +430,39 @@
                 zoomControl: true
             });
 
-            // Compute bounds at max zoom from your actual tile extents
-            const widthPx = (X_MAX_ZMAX + 1) * TILE_SIZE;
-            const heightPx = (Y_MAX_ZMAX + 1) * TILE_SIZE;
+            // Compute bounds from actual max-zoom extents
+            const widthPx = (extMax.x_max + 1) * TILE_SIZE;
+            const heightPx = (extMax.y_max + 1) * TILE_SIZE;
             const bounds = [[0, 0], [heightPx, widthPx]];
 
-            // Use API-served tiles for caching, or switch to '/static/tiles/{z}/{x}/{y}.webp'
-            const tiles = L.tileLayer('/tiles/{z}/{x}/{y}.webp', {
+            // Custom tile layer that clamps x/y to available ranges
+            const transparentTile = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+            const byZ = meta.by_z || {};
+            const TileLayerClamped = L.TileLayer.extend({
+                getTileUrl: function(coords) {
+                    const z = String(coords.z);
+                    const ext = byZ[z];
+                    if (!ext) return transparentTile;
+                    if (coords.x < ext.x_min || coords.x > ext.x_max || coords.y < ext.y_min || coords.y > ext.y_max) {
+                        return transparentTile;
+                    }
+                    return L.TileLayer.prototype.getTileUrl.call(this, coords);
+                }
+            });
+
+            const tiles = new TileLayerClamped('/tiles/{z}/{x}/{y}.webp', {
                 tileSize: TILE_SIZE,
                 minZoom: MIN_ZOOM,
                 maxZoom: MAX_ZOOM,
                 minNativeZoom: MIN_ZOOM,
                 maxNativeZoom: MAX_ZOOM,
                 noWrap: true,
-                // Most tile tools output XYZ (origin top-left). If your tiles appear
-                // vertically flipped, set tms: true.
-                // tms: true,
                 updateWhenZooming: false,
                 keepBuffer: 4
             });
             tiles.addTo(map);
 
-            map.setMaxBounds(bounds);  // keep panning within the image
-            map.setMaxBounds(bounds);  // apply viscosity for stronger clamping
+            map.setMaxBounds(bounds);
             map.options.maxBoundsViscosity = 1.0;
             map.fitBounds(bounds);
 
