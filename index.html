@@ -389,6 +389,8 @@
         let currentUser = null;
 
         const API_URL = window.location.origin;
+        const DEBUG_TILES = true || (localStorage.getItem('debugTiles') === '1');
+        function dbg(...args) { if (DEBUG_TILES) { try { console.log('[tiles]', ...args); } catch(_) {} } }
 
         const categoryColors = {
             boss: '#c41e3a',
@@ -406,9 +408,12 @@
             // Fetch tile metadata from server to clamp requests
             let meta;
             try {
+                dbg('fetch /tile-metadata start');
                 const res = await fetch('/tile-metadata');
                 meta = await res.json();
-            } catch (_) {
+                dbg('tile-metadata:', meta);
+            } catch (e) {
+                console.error('[tiles] failed to fetch /tile-metadata', e);
                 meta = { min_z: 1, max_z: 8, by_z: { '1': {x_min:0,x_max:1,y_min:0,y_max:1} } };
             }
 
@@ -429,11 +434,13 @@
                 wheelPxPerZoomLevel: 120,
                 zoomControl: true
             });
+            dbg('map created', { MIN_ZOOM, MAX_ZOOM, startZoom: MIN_ZOOM });
 
             // Compute world bounds using the actual max-zoom extents
             const worldWidthPx = (extMax.x_max - extMax.x_min + 1) * TILE_SIZE;
             const worldHeightPx = (extMax.y_max - extMax.y_min + 1) * TILE_SIZE;
             const bounds = [[0, 0], [worldHeightPx, worldWidthPx]];
+            dbg('computed world bounds (px)', { worldWidthPx, worldHeightPx, bounds, extMax });
 
             // Custom GridLayer that maps Leaflet's 0-based grid at each zoom
             // to your dataset's per-zoom extents and offsets.
@@ -444,18 +451,6 @@
                 initialize: function(opts) {
                     L.setOptions(this, opts);
                 },
-                getTileSize: function() {
-                    // Determine dynamic tile size so that the number of tiles across/down
-                    // matches your dataset at the current zoom, while keeping a fixed world size.
-                    const z = this._map.getZoom();
-                    const ext = byZ[String(z)];
-                    // Fallback to 1x1 to avoid divide-by-zero if ext missing
-                    const tilesAcross = ext ? (ext.x_max - ext.x_min + 1) : 1;
-                    const tilesDown = ext ? (ext.y_max - ext.y_min + 1) : 1;
-                    const w = Math.max(1, Math.round(worldWidthPx / tilesAcross));
-                    const h = Math.max(1, Math.round(worldHeightPx / tilesDown));
-                    return L.point(w, h);
-                },
                 createTile: function(coords, done) {
                     const tile = document.createElement('img');
                     tile.alt = '';
@@ -465,6 +460,7 @@
 
                     const ext = byZ[String(coords.z)];
                     if (!ext) {
+                        dbg('no extents for z -> transparent', coords);
                         tile.src = transparentTile;
                         done(null, tile);
                         return tile;
@@ -473,6 +469,7 @@
                     const y0 = ext.y_min, y1 = ext.y_max;
                     const maxX = x1 - x0, maxY = y1 - y0;
                     if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) {
+                        dbg('OOB tile -> transparent', { coords, ext });
                         tile.src = transparentTile;
                         done(null, tile);
                         return tile;
@@ -481,24 +478,37 @@
                     const mappedX = coords.x + x0;
                     const mappedY = coords.y + y0;
                     const url = `/tiles/${coords.z}/${mappedX}/${mappedY}.webp`;
-                    tile.onload = () => done(null, tile);
-                    tile.onerror = () => done(null, tile);
+                    tile.onload = (ev) => { dbg('tile load ok', url); done(null, tile); };
+                    tile.onerror = (ev) => { console.error('[tiles] tile load error', url); done(null, tile); };
                     tile.src = url;
-                    try { console.debug('tile req', coords, '->', url); } catch (_) {}
+                    dbg('tile req', coords, '->', url);
                     return tile;
                 }
             });
 
             const tiles = new DatasetGridLayer({
+                tileSize: TILE_SIZE,
                 noWrap: true,
                 updateWhenZooming: false,
                 keepBuffer: 4
             });
             tiles.addTo(map);
+            window.tilesLayer = tiles;
+            window.tilesMeta = meta;
+            window.tilesExtByZ = byZ;
 
             map.setMaxBounds(bounds);
             map.options.maxBoundsViscosity = 1.0;
             map.fitBounds(bounds);
+            dbg('fitBounds applied');
+
+            // Map event diagnostics
+            map.on('zoomstart', () => dbg('zoomstart', map.getZoom()));
+            map.on('zoomend', () => dbg('zoomend', map.getZoom(), 'center', map.getCenter()));
+            map.on('moveend', () => {
+                const pb = map.getPixelBounds();
+                dbg('moveend center', map.getCenter(), 'pixelBounds', { min: pb.min, max: pb.max });
+            });
 
             map.on('click', function(e) {
                 if (addPinMode && authToken) {
@@ -507,6 +517,7 @@
                 }
             });
 
+            dbg('initMap complete', { MIN_ZOOM, MAX_ZOOM, extMax });
             showStatus('Map initialized (tiles)');
             checkAuth();
             loadPins();
