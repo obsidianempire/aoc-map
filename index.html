@@ -478,20 +478,22 @@
                     const x0 = ext.x_min, x1 = ext.x_max;
                     const y0 = ext.y_min, y1 = ext.y_max;
                     const maxX = x1 - x0, maxY = y1 - y0;
-                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) {
-                        dbg('OOB tile -> transparent', { coords, ext });
-                        tile.src = transparentTile;
-                        done(null, tile);
-                        return tile;
-                    }
+                    // Clamp to nearest available tile so edges still render
+                    let cx = coords.x, cy = coords.y;
+                    let clamped = false;
+                    if (cx < 0) { cx = 0; clamped = true; }
+                    if (cy < 0) { cy = 0; clamped = true; }
+                    if (cx > maxX) { cx = maxX; clamped = true; }
+                    if (cy > maxY) { cy = maxY; clamped = true; }
 
-                    const mappedX = coords.x + x0;
-                    const mappedY = coords.y + y0;
+                    const mappedX = cx + x0;
+                    const mappedY = cy + y0;
                     const url = `/tiles/${coords.z}/${mappedX}/${mappedY}.webp`;
                     tile.onload = (ev) => { dbg('tile load ok', url); done(null, tile); };
                     tile.onerror = (ev) => { console.error('[tiles] tile load error', url); done(null, tile); };
                     tile.src = url;
-                    dbg('tile req', coords, '->', url);
+                    if (clamped) dbg('tile req (clamped)', { from: coords, to: { x: cx, y: cy, z: coords.z } }, '->', url);
+                    else dbg('tile req', coords, '->', url);
                     return tile;
                 }
             });
@@ -547,6 +549,17 @@
             showStatus('Map initialized (tiles)');
             checkAuth();
             loadPins();
+
+            // Smoke-test a known tile to verify network + route
+            try {
+                const testUrl = '/tiles/1/0/0.webp';
+                const img = new Image();
+                img.onload = () => dbg('smoke-test tile load ok', testUrl);
+                img.onerror = () => console.error('[tiles] smoke-test tile load error', testUrl);
+                img.src = testUrl;
+            } catch (e) {
+                console.error('[tiles] smoke-test setup failed', e);
+            }
         }
 
         // Check for existing auth token
