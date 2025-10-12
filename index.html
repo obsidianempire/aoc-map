@@ -441,10 +441,10 @@
             dbg('map created', { MIN_ZOOM, MAX_ZOOM, startZoom: MIN_ZOOM });
 
             // Compute world bounds using the actual max-zoom extents
-            const tilesAcrossMin = Math.max(1, extMin.x_max - extMin.x_min + 1);
-            const tilesDownMin = Math.max(1, extMin.y_max - extMin.y_min + 1);
-            const worldWidthPx = tilesAcrossMin * TILE_SIZE;
-            const worldHeightPx = tilesDownMin * TILE_SIZE;
+            const tilesAcrossMax = Math.max(1, extMax.x_max - extMax.x_min + 1);
+            const tilesDownMax = Math.max(1, extMax.y_max - extMax.y_min + 1);
+            const worldWidthPx = tilesAcrossMax * TILE_SIZE;
+            const worldHeightPx = tilesDownMax * TILE_SIZE;
             const bounds = [[0, 0], [worldHeightPx, worldWidthPx]];
             dbg('computed world bounds (px)', { worldWidthPx, worldHeightPx, bounds, extMin, extMax });
 
@@ -460,8 +460,8 @@
                 getTileSize: function() {
                     const z = this._map ? this._map.getZoom() : MIN_ZOOM;
                     const ext = byZ[String(z)];
-                    const tilesAcross = ext ? (ext.x_max - ext.x_min + 1) : 1;
-                    const tilesDown = ext ? (ext.y_max - ext.y_min + 1) : 1;
+                    const tilesAcross = ext ? (ext.x_max - ext.x_min + 1) : tilesAcrossMax;
+                    const tilesDown = ext ? (ext.y_max - ext.y_min + 1) : tilesDownMax;
                     const w = Math.max(1, Math.round(worldWidthPx / tilesAcross));
                     const h = Math.max(1, Math.round(worldHeightPx / tilesDown));
                     dbg('getTileSize', { z, tilesAcross, tilesDown, w, h });
@@ -484,22 +484,20 @@
                     const x0 = ext.x_min, x1 = ext.x_max;
                     const y0 = ext.y_min, y1 = ext.y_max;
                     const maxX = x1 - x0, maxY = y1 - y0;
-                    // Clamp to nearest available tile so edges still render
-                    let cx = coords.x, cy = coords.y;
-                    let clamped = false;
-                    if (cx < 0) { cx = 0; clamped = true; }
-                    if (cy < 0) { cy = 0; clamped = true; }
-                    if (cx > maxX) { cx = maxX; clamped = true; }
-                    if (cy > maxY) { cy = maxY; clamped = true; }
+                    if (coords.x < 0 || coords.y < 0 || coords.x > maxX || coords.y > maxY) {
+                        dbg('OOB tile -> transparent', { coords, ext });
+                        tile.src = transparentTile;
+                        done(null, tile);
+                        return tile;
+                    }
 
-                    const mappedX = cx + x0;
-                    const mappedY = cy + y0;
+                    const mappedX = coords.x + x0;
+                    const mappedY = coords.y + y0;
                     const url = `/tiles/${coords.z}/${mappedX}/${mappedY}.webp`;
                     tile.onload = (ev) => { dbg('tile load ok', url); done(null, tile); };
                     tile.onerror = (ev) => { console.error('[tiles] tile load error', url); done(null, tile); };
                     tile.src = url;
-                    if (clamped) dbg('tile req (clamped)', { from: coords, to: { x: cx, y: cy, z: coords.z } }, '->', url);
-                    else dbg('tile req', coords, '->', url);
+                    dbg('tile req', coords, '->', url);
                     return tile;
                 }
             });
@@ -509,7 +507,7 @@
                 tileSize: TILE_SIZE,
                 noWrap: true,
                 updateWhenZooming: false,
-                keepBuffer: 4,
+                keepBuffer: 1,
                 bounds: crsBounds,
                 minZoom: MIN_ZOOM,
                 maxZoom: MAX_ZOOM
@@ -523,7 +521,9 @@
             map.options.maxBoundsViscosity = 1.0;
             const mapCenter = L.latLng(worldHeightPx / 2, worldWidthPx / 2);
             map.setView(mapCenter, MIN_ZOOM, { animate: false, reset: true });
-            dbg('setView to map center at min zoom', { mapCenter, MIN_ZOOM });
+            map.fitBounds(bounds, { animate: false, maxZoom: MIN_ZOOM });
+            map.setZoom(MIN_ZOOM);
+            dbg('setView to map center at min zoom', { mapCenter, MIN_ZOOM, bounds });
 
             // Map event diagnostics
             map.on('zoomstart', () => dbg('zoomstart', map.getZoom()));
