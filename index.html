@@ -513,8 +513,20 @@
 
             map.setMaxBounds(bounds);
             map.options.maxBoundsViscosity = 1.0;
-            map.fitBounds(bounds);
-            dbg('fitBounds applied');
+            // Focus initial view on the first tile at z=MIN_ZOOM (x=0,y=0)
+            const extInit = byZ[String(MIN_ZOOM)];
+            if (extInit) {
+                const tilesAcrossInit = (extInit.x_max - extInit.x_min + 1) || 1;
+                const tilesDownInit = (extInit.y_max - extInit.y_min + 1) || 1;
+                const tileW = worldWidthPx / tilesAcrossInit;
+                const tileH = worldHeightPx / tilesDownInit;
+                const initCenter = L.latLng(tileH / 2, tileW / 2);
+                map.setView(initCenter, MIN_ZOOM, { animate: false });
+                dbg('setView to first tile center', { initCenter, tilesAcrossInit, tilesDownInit, tileW, tileH });
+            } else {
+                map.fitBounds(bounds);
+                dbg('fitBounds applied (no extents for MIN_ZOOM)');
+            }
 
             // Map event diagnostics
             map.on('zoomstart', () => dbg('zoomstart', map.getZoom()));
