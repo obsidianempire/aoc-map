@@ -1,74 +1,78 @@
 from flask import Flask, request, jsonify, send_from_directory, redirect
 from flask_cors import CORS
-import sqlite3
 import os
 import requests
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 
-# --- NEW: SQLAlchemy / Postgres ---
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
-
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
 CORS(app, supports_credentials=True, origins=['*'])
-
-# Database configuration
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
-USE_POSTGRES = DATABASE_URL.startswith('postgresql')
 
 # Discord OAuth2 settings
 DISCORD_CLIENT_ID = os.environ.get('DISCORD_CLIENT_ID', '')
 DISCORD_CLIENT_SECRET = os.environ.get('DISCORD_CLIENT_SECRET', '')
 DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:5000/callback')
-DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')  # Your Discord server ID
+DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')
 DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 
+"""Database configuration: Force PostgreSQL using psycopg v3."""
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
-# ---------- DATABASE (PostgreSQL via SQLAlchemy) ----------
-def _normalize_db_url(url: str) -> str:
-    # Some providers (including older Render strings) use postgres://; SQLAlchemy prefers postgresql://
-    if url and url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    # Force psycopg v3 driver
-    if url and url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return url
-
-DATABASE_URL = _normalize_db_url(os.environ.get("DATABASE_URL", ""))
-
+# Support constructing a DSN from standard PG* env vars if DATABASE_URL not set
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set. Add it in Render > Environment.")
+    pg_user = os.environ.get('PGUSER')
+    pg_password = os.environ.get('PGPASSWORD')
+    pg_host = os.environ.get('PGHOST')
+    pg_port = os.environ.get('PGPORT', '5432')
+    pg_db = os.environ.get('PGDATABASE')
+    if pg_host and pg_user and pg_db:
+        auth = f":{pg_password}" if pg_password else ''
+        DATABASE_URL = f"postgresql://{pg_user}{auth}@{pg_host}:{pg_port}/{pg_db}"
 
+import psycopg
+from psycopg.rows import dict_row
+print("🐘 Using PostgreSQL database")
 
+def get_db():
+    """Connect to the PostgreSQL database."""
+    if not DATABASE_URL:
+        raise RuntimeError('DATABASE_URL is not configured for PostgreSQL')
+    conn = psycopg.connect(DATABASE_URL)
+    return conn
 
+def dict_from_row(row):
+    """Convert database row to dictionary (PostgreSQL)."""
+    return dict(row)
 
 def init_db():
-    """Initialize the database with pins table (idempotent)."""
+    """Initialize the PostgreSQL database with pins table."""
     try:
-        create_sql = """
-        CREATE TABLE IF NOT EXISTS pins (
-            id SERIAL PRIMARY KEY,
-            title TEXT NOT NULL,
-            description TEXT,
-            category TEXT NOT NULL,
-            lat DOUBLE PRECISION NOT NULL,
-            lng DOUBLE PRECISION NOT NULL,
-            discord_user_id TEXT NOT NULL,
-            discord_username TEXT NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-        """
-        with engine.begin() as conn:
-            conn.execute(text(create_sql))
-        print("✅ PostgreSQL initialized (table: pins)")
-    except SQLAlchemyError as e:
-        print(f"❌ Error initializing PostgreSQL: {e}")
+        db = get_db()
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pins (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lng REAL NOT NULL,
+                    discord_user_id TEXT NOT NULL,
+                    discord_username TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        db.commit()
+        db.close()
+        print("✅ PostgreSQL database initialized successfully!")
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
         raise
 
-    
 def create_token(user_data):
     """Create a JWT token for the user."""
     payload = {
@@ -98,14 +102,12 @@ def require_auth(f):
         if not auth_header:
             return jsonify({'error': 'No authorization token provided'}), 401
         
-        # Extract token from "Bearer <token>"
         token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else auth_header
-        
         user_data = verify_token(token)
+        
         if not user_data:
             return jsonify({'error': 'Invalid or expired token'}), 401
         
-        # Attach user data to request
         request.user = user_data
         return f(*args, **kwargs)
     
@@ -129,6 +131,7 @@ def health_check():
     return jsonify({
         'status': 'healthy', 
         'message': 'Map API is running',
+        'database': 'PostgreSQL',
         'discord_configured': bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET)
     })
 
@@ -142,7 +145,7 @@ def login():
         'client_id': DISCORD_CLIENT_ID,
         'redirect_uri': DISCORD_REDIRECT_URI,
         'response_type': 'code',
-        'scope': 'identify'
+        'scope': 'identify guilds'
     }
     
     param_string = '&'.join([f'{k}={v}' for k, v in params.items()])
@@ -197,6 +200,7 @@ def callback():
         
         user_data = user_response.json()
         print(f"✅ User logged in: {user_data['username']}")
+        
         # Check guild membership if DISCORD_GUILD_ID is set
         if DISCORD_GUILD_ID:
             guilds_response = requests.get(
@@ -255,11 +259,10 @@ def callback():
                 print(f"✅ User {user_data['username']} is a member of Obsidian Empire")
             else:
                 print(f"⚠️ Could not verify guild membership for {user_data['username']}")
-
+        
         # Create JWT token
         jwt_token = create_token(user_data)
         
-        # Return HTML that sends message to parent window
         return f'''
         <!DOCTYPE html>
         <html>
@@ -298,7 +301,6 @@ def callback():
                     username: '{user_data['username']}'
                 }}, '*');
                 
-                // Auto-close after 2 seconds
                 setTimeout(function() {{
                     window.close();
                 }}, 2000);
@@ -336,12 +338,14 @@ def get_pins():
     """Get all pins (no auth required)."""
     try:
         db = get_db()
-        pins = db.execute('SELECT * FROM pins ORDER BY created_at DESC').fetchall()
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
+        pins = cursor.fetchall()
+        cursor.close()
         db.close()
         
-        pins_list = [dict(pin) for pin in pins]
-        print(f"📍 Returning {len(pins_list)} pins")
-        return jsonify(pins_list)
+        print(f"📍 Returning {len(pins)} pins")
+        return jsonify([dict(p) for p in pins])
         
     except Exception as e:
         print(f"❌ Error getting pins: {e}")
@@ -355,7 +359,6 @@ def create_pin():
         data = request.json
         print(f"📝 Creating pin: {data.get('title')} by {request.user['username']}")
         
-        # Validate required fields
         if not data.get('title'):
             return jsonify({'error': 'Title is required'}), 400
         
@@ -366,9 +369,11 @@ def create_pin():
             return jsonify({'error': 'Coordinates are required'}), 400
         
         db = get_db()
-        cursor = db.execute('''
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('''
             INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
         ''', (
             data['title'],
             data.get('description', ''),
@@ -378,10 +383,9 @@ def create_pin():
             request.user['discord_id'],
             request.user['username']
         ))
+        pin = cursor.fetchone()
         db.commit()
-        
-        # Get the newly created pin
-        pin = db.execute('SELECT * FROM pins WHERE id = ?', (cursor.lastrowid,)).fetchone()
+        cursor.close()
         db.close()
         
         pin_dict = dict(pin)
@@ -395,30 +399,43 @@ def create_pin():
 @app.route('/pins/<int:pin_id>', methods=['DELETE'])
 @require_auth
 def delete_pin(pin_id):
-    """Delete a pin (only if user owns it)."""
+    """Delete a pin (only if user owns it or is admin)."""
     try:
         db = get_db()
-        
+        cursor = db.cursor(row_factory=dict_row)
         # Check if pin exists
-        pin = db.execute('SELECT * FROM pins WHERE id = ?', (pin_id,)).fetchone()
+        cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
+        pin = cursor.fetchone()
         
         if not pin:
+            cursor.close()
             db.close()
             return jsonify({'error': 'Pin not found'}), 404
         
+        pin_dict = dict(pin)
+        
+        # Check if user is admin
         is_admin = request.user['username'].lower() == 'randmiester'
-        # Check ownership
-        if pin['discord_user_id'] != request.user['discord_id'] and not is_admin:
+        
+        # Check ownership or admin status
+        if pin_dict['discord_user_id'] != request.user['discord_id'] and not is_admin:
+            cursor.close()
             db.close()
-            print(f"⛔ User {request.user['username']} tried to delete pin owned by {pin['discord_username']}")
+            print(f"⛔ User {request.user['username']} tried to delete pin owned by {pin_dict['discord_username']}")
             return jsonify({'error': 'You can only delete your own pins'}), 403
         
         # Delete the pin
-        db.execute('DELETE FROM pins WHERE id = ?', (pin_id,))
+        cursor.execute('DELETE FROM pins WHERE id = %s', (pin_id,))
+        
         db.commit()
+        cursor.close()
         db.close()
         
-        print(f"🗑️ Pin {pin_id} deleted by {request.user['username']}")
+        if is_admin and pin_dict['discord_user_id'] != request.user['discord_id']:
+            print(f"👑 Admin {request.user['username']} deleted pin {pin_id} owned by {pin_dict['discord_username']}")
+        else:
+            print(f"🗑️ Pin {pin_id} deleted by {request.user['username']}")
+        
         return jsonify({'message': 'Pin deleted successfully'})
         
     except Exception as e:
@@ -432,40 +449,47 @@ def update_pin(pin_id):
     try:
         data = request.json
         db = get_db()
-        
+        cursor = db.cursor(row_factory=dict_row)
         # Check if pin exists
-        pin = db.execute('SELECT * FROM pins WHERE id = ?', (pin_id,)).fetchone()
+        cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
+        pin = cursor.fetchone()
         
         if not pin:
+            cursor.close()
             db.close()
             return jsonify({'error': 'Pin not found'}), 404
         
+        pin_dict = dict(pin)
+        
         # Check ownership
-        if pin['discord_user_id'] != request.user['discord_id']:
+        if pin_dict['discord_user_id'] != request.user['discord_id']:
+            cursor.close()
             db.close()
             return jsonify({'error': 'You can only edit your own pins'}), 403
         
         # Update pin
-        db.execute('''
+        cursor.execute('''
             UPDATE pins 
-            SET title = ?, description = ?, category = ?, lat = ?, lng = ?
-            WHERE id = ?
+            SET title = %s, description = %s, category = %s, lat = %s, lng = %s
+            WHERE id = %s
+            RETURNING *
         ''', (
-            data.get('title', pin['title']),
-            data.get('description', pin['description']),
-            data.get('category', pin['category']),
-            data.get('lat', pin['lat']),
-            data.get('lng', pin['lng']),
+            data.get('title', pin_dict['title']),
+            data.get('description', pin_dict['description']),
+            data.get('category', pin_dict['category']),
+            data.get('lat', pin_dict['lat']),
+            data.get('lng', pin_dict['lng']),
             pin_id
         ))
-        db.commit()
+        updated_pin = cursor.fetchone()
         
-        # Get updated pin
-        updated_pin = db.execute('SELECT * FROM pins WHERE id = ?', (pin_id,)).fetchone()
+        db.commit()
+        cursor.close()
         db.close()
         
+        result = dict(updated_pin)
         print(f"✏️ Pin {pin_id} updated by {request.user['username']}")
-        return jsonify(dict(updated_pin))
+        return jsonify(result)
         
     except Exception as e:
         print(f"❌ Error updating pin: {e}")
@@ -479,6 +503,5 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
 else:
-    # When running with Gunicorn
     init_db()
     print("🚀 Running with Gunicorn...")
