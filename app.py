@@ -17,45 +17,42 @@ DISCORD_REDIRECT_URI = os.environ.get('DISCORD_REDIRECT_URI', 'http://localhost:
 DISCORD_GUILD_ID = os.environ.get('DISCORD_GUILD_ID', '')
 DISCORD_API_ENDPOINT = 'https://discord.com/api/v10'
 
-# Database configuration
+"""Database configuration: Force PostgreSQL using psycopg v3."""
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-USE_POSTGRES = bool(DATABASE_URL and DATABASE_URL.startswith('postgres'))
 
-if USE_POSTGRES:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    print("🐘 Using PostgreSQL database")
-else:
-    import sqlite3
-    DATABASE_URL = 'map_pins.db'
-    print("📁 Using SQLite database")
+# Support constructing a DSN from standard PG* env vars if DATABASE_URL not set
+if not DATABASE_URL:
+    pg_user = os.environ.get('PGUSER')
+    pg_password = os.environ.get('PGPASSWORD')
+    pg_host = os.environ.get('PGHOST')
+    pg_port = os.environ.get('PGPORT', '5432')
+    pg_db = os.environ.get('PGDATABASE')
+    if pg_host and pg_user and pg_db:
+        auth = f":{pg_password}" if pg_password else ''
+        DATABASE_URL = f"postgresql://{pg_user}{auth}@{pg_host}:{pg_port}/{pg_db}"
+
+import psycopg
+from psycopg.rows import dict_row
+print("🐘 Using PostgreSQL database")
 
 def get_db():
-    """Connect to the database (SQLite or PostgreSQL)."""
-    if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
-    else:
-        db = sqlite3.connect(DATABASE_URL)
-        db.row_factory = sqlite3.Row
-        return db
+    """Connect to the PostgreSQL database."""
+    if not DATABASE_URL:
+        raise RuntimeError('DATABASE_URL is not configured for PostgreSQL')
+    conn = psycopg.connect(DATABASE_URL)
+    return conn
 
 def dict_from_row(row):
-    """Convert database row to dictionary."""
-    if USE_POSTGRES:
-        return dict(row)
-    else:
-        return dict(row)
+    """Convert database row to dictionary (PostgreSQL)."""
+    return dict(row)
 
 def init_db():
-    """Initialize the database with pins table."""
+    """Initialize the PostgreSQL database with pins table."""
     try:
         db = get_db()
-        cursor = db.cursor()
-        
-        if USE_POSTGRES:
-            # PostgreSQL version
-            cursor.execute("""
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS pins (
                     id SERIAL PRIMARY KEY,
                     title TEXT NOT NULL,
@@ -67,66 +64,11 @@ def init_db():
                     discord_username TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
-            db.commit()
-            print("✅ PostgreSQL database initialized successfully!")
-        else:
-            # SQLite version with migration support
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pins'")
-            table_exists = cursor.fetchone()
-            
-            if table_exists:
-                cursor.execute("PRAGMA table_info(pins)")
-                columns = [col[1] for col in cursor.fetchall()]
-                
-                if 'discord_user_id' not in columns:
-                    print("🔄 Migrating SQLite database...")
-                    cursor.execute("ALTER TABLE pins RENAME TO pins_old")
-                    
-                    cursor.execute("""
-                        CREATE TABLE pins (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            title TEXT NOT NULL,
-                            description TEXT,
-                            category TEXT NOT NULL,
-                            lat REAL NOT NULL,
-                            lng REAL NOT NULL,
-                            discord_user_id TEXT NOT NULL,
-                            discord_username TEXT NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    
-                    cursor.execute("""
-                        INSERT INTO pins (id, title, description, category, lat, lng, discord_user_id, discord_username, created_at)
-                        SELECT id, title, description, category, lat, lng, 'legacy-user', 'Legacy User', 
-                               COALESCE(created_at, CURRENT_TIMESTAMP)
-                        FROM pins_old
-                    """)
-                    
-                    migrated = cursor.rowcount
-                    cursor.execute("DROP TABLE pins_old")
-                    print(f"✅ Migrated {migrated} existing pins")
-            else:
-                cursor.execute("""
-                    CREATE TABLE pins (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        category TEXT NOT NULL,
-                        lat REAL NOT NULL,
-                        lng REAL NOT NULL,
-                        discord_user_id TEXT NOT NULL,
-                        discord_username TEXT NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                print("✅ SQLite database initialized successfully!")
-        
+                """
+            )
         db.commit()
-        cursor.close()
         db.close()
-        
+        print("✅ PostgreSQL database initialized successfully!")
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
         raise
@@ -183,19 +125,72 @@ def serve_map_image():
     """Serve the map image."""
     return send_from_directory('.', 'AshesMapVerra.jpg')
 
-@app.route('/tiles/<int:z>/<int:x>/<int:y>.webp')
-def serve_tile(z, x, y):
-    """Serve map tiles."""
+@app.route('/tiles/<path:filename>')
+def serve_tiles(filename):
+    """Serve files from the local static tiles directory as an API endpoint.
+
+    Example: GET /tiles/6/12/34.webp -> static/tiles/6/12/34.webp
+    """
+    # send_from_directory already guards against path traversal
+    response = send_from_directory(os.path.join('static', 'tiles'), filename)
+    # Encourage client/browser caching for tiles
+    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return response
+
+@app.route('/tile-metadata', methods=['GET'])
+def tile_metadata():
+    """Return available tile extents per zoom by scanning static/tiles.
+
+    Response example:
+    {
+      "min_z": 1,
+      "max_z": 8,
+      "by_z": {
+        "1": {"x_min": 0, "x_max": 1, "y_min": 0, "y_max": 1},
+        ...
+      }
+    }
+    """
+    base_dir = os.path.join('static', 'tiles')
+    result = {"min_z": None, "max_z": None, "by_z": {}}
     try:
-        tile_path = f'tiles/{z}/{x}/{y}.webp'
-        if os.path.exists(tile_path):
-            return send_from_directory('tiles', f'{z}/{x}/{y}.webp')
-        else:
-            # Return 404 for missing tiles (frontend will show transparent)
-            return '', 404
+        if not os.path.isdir(base_dir):
+            return jsonify(result)
+
+        for z_name in sorted(os.listdir(base_dir)):
+            if not z_name.isdigit():
+                continue
+            z_path = os.path.join(base_dir, z_name)
+            if not os.path.isdir(z_path):
+                continue
+            z = int(z_name)
+
+            x_vals = []
+            y_vals = []
+            for x_name in os.listdir(z_path):
+                x_path = os.path.join(z_path, x_name)
+                if not os.path.isdir(x_path) or not x_name.lstrip('-').isdigit():
+                    continue
+                x = int(x_name)
+                x_vals.append(x)
+                for fname in os.listdir(x_path):
+                    if fname.lower().endswith('.webp') and fname[:-5].lstrip('-').isdigit():
+                        y_vals.append(int(fname[:-5]))
+
+            if x_vals and y_vals:
+                result['by_z'][z_name] = {
+                    'x_min': min(x_vals), 'x_max': max(x_vals),
+                    'y_min': min(y_vals), 'y_max': max(y_vals)
+                }
+                result['min_z'] = z if result['min_z'] is None else min(result['min_z'], z)
+                result['max_z'] = z if result['max_z'] is None else max(result['max_z'], z)
+
+        resp = jsonify(result)
+        resp.headers['Cache-Control'] = 'public, max-age=300'
+        return resp
     except Exception as e:
-        print(f"Error serving tile {z}/{x}/{y}: {e}")
-        return '', 404
+        print(f"❌ Error scanning tile metadata: {e}")
+        return jsonify(result), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -203,7 +198,7 @@ def health_check():
     return jsonify({
         'status': 'healthy', 
         'message': 'Map API is running',
-        'database': 'PostgreSQL' if USE_POSTGRES else 'SQLite',
+        'database': 'PostgreSQL',
         'discord_configured': bool(DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET)
     })
 
@@ -410,22 +405,14 @@ def get_pins():
     """Get all pins (no auth required)."""
     try:
         db = get_db()
-        
-        if USE_POSTGRES:
-            cursor = db.cursor(cursor_factory=RealDictCursor)
-            cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
-            pins = cursor.fetchall()
-            cursor.close()
-        else:
-            cursor = db.cursor()
-            cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
-            pins = [dict(row) for row in cursor.fetchall()]
-            cursor.close()
-        
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('SELECT * FROM pins ORDER BY created_at DESC')
+        pins = cursor.fetchall()
+        cursor.close()
         db.close()
         
         print(f"📍 Returning {len(pins)} pins")
-        return jsonify(pins)
+        return jsonify([dict(p) for p in pins])
         
     except Exception as e:
         print(f"❌ Error getting pins: {e}")
@@ -449,44 +436,26 @@ def create_pin():
             return jsonify({'error': 'Coordinates are required'}), 400
         
         db = get_db()
-        cursor = db.cursor()
-        
-        if USE_POSTGRES:
-            cursor.execute('''
-                INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING *
-            ''', (
-                data['title'],
-                data.get('description', ''),
-                data['category'],
-                float(data['lat']),
-                float(data['lng']),
-                request.user['discord_id'],
-                request.user['username']
-            ))
-            pin = cursor.fetchone()
-        else:
-            cursor.execute('''
-                INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                data['title'],
-                data.get('description', ''),
-                data['category'],
-                float(data['lat']),
-                float(data['lng']),
-                request.user['discord_id'],
-                request.user['username']
-            ))
-            cursor.execute('SELECT * FROM pins WHERE id = ?', (cursor.lastrowid,))
-            pin = dict(cursor.fetchone())
-        
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('''
+            INSERT INTO pins (title, description, category, lat, lng, discord_user_id, discord_username)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        ''', (
+            data['title'],
+            data.get('description', ''),
+            data['category'],
+            float(data['lat']),
+            float(data['lng']),
+            request.user['discord_id'],
+            request.user['username']
+        ))
+        pin = cursor.fetchone()
         db.commit()
         cursor.close()
         db.close()
         
-        pin_dict = dict(pin) if USE_POSTGRES else pin
+        pin_dict = dict(pin)
         print(f"✅ Pin created: ID {pin_dict['id']}")
         return jsonify(pin_dict), 201
         
@@ -500,14 +469,9 @@ def delete_pin(pin_id):
     """Delete a pin (only if user owns it or is admin)."""
     try:
         db = get_db()
-        cursor = db.cursor()
-        
+        cursor = db.cursor(row_factory=dict_row)
         # Check if pin exists
-        if USE_POSTGRES:
-            cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
-        else:
-            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
-        
+        cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
         pin = cursor.fetchone()
         
         if not pin:
@@ -528,10 +492,7 @@ def delete_pin(pin_id):
             return jsonify({'error': 'You can only delete your own pins'}), 403
         
         # Delete the pin
-        if USE_POSTGRES:
-            cursor.execute('DELETE FROM pins WHERE id = %s', (pin_id,))
-        else:
-            cursor.execute('DELETE FROM pins WHERE id = ?', (pin_id,))
+        cursor.execute('DELETE FROM pins WHERE id = %s', (pin_id,))
         
         db.commit()
         cursor.close()
@@ -555,14 +516,9 @@ def update_pin(pin_id):
     try:
         data = request.json
         db = get_db()
-        cursor = db.cursor()
-        
+        cursor = db.cursor(row_factory=dict_row)
         # Check if pin exists
-        if USE_POSTGRES:
-            cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
-        else:
-            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
-        
+        cursor.execute('SELECT * FROM pins WHERE id = %s', (pin_id,))
         pin = cursor.fetchone()
         
         if not pin:
@@ -579,42 +535,26 @@ def update_pin(pin_id):
             return jsonify({'error': 'You can only edit your own pins'}), 403
         
         # Update pin
-        if USE_POSTGRES:
-            cursor.execute('''
-                UPDATE pins 
-                SET title = %s, description = %s, category = %s, lat = %s, lng = %s
-                WHERE id = %s
-                RETURNING *
-            ''', (
-                data.get('title', pin_dict['title']),
-                data.get('description', pin_dict['description']),
-                data.get('category', pin_dict['category']),
-                data.get('lat', pin_dict['lat']),
-                data.get('lng', pin_dict['lng']),
-                pin_id
-            ))
-            updated_pin = cursor.fetchone()
-        else:
-            cursor.execute('''
-                UPDATE pins 
-                SET title = ?, description = ?, category = ?, lat = ?, lng = ?
-                WHERE id = ?
-            ''', (
-                data.get('title', pin_dict['title']),
-                data.get('description', pin_dict['description']),
-                data.get('category', pin_dict['category']),
-                data.get('lat', pin_dict['lat']),
-                data.get('lng', pin_dict['lng']),
-                pin_id
-            ))
-            cursor.execute('SELECT * FROM pins WHERE id = ?', (pin_id,))
-            updated_pin = dict(cursor.fetchone())
+        cursor.execute('''
+            UPDATE pins 
+            SET title = %s, description = %s, category = %s, lat = %s, lng = %s
+            WHERE id = %s
+            RETURNING *
+        ''', (
+            data.get('title', pin_dict['title']),
+            data.get('description', pin_dict['description']),
+            data.get('category', pin_dict['category']),
+            data.get('lat', pin_dict['lat']),
+            data.get('lng', pin_dict['lng']),
+            pin_id
+        ))
+        updated_pin = cursor.fetchone()
         
         db.commit()
         cursor.close()
         db.close()
         
-        result = dict(updated_pin) if USE_POSTGRES else updated_pin
+        result = dict(updated_pin)
         print(f"✏️ Pin {pin_id} updated by {request.user['username']}")
         return jsonify(result)
         
