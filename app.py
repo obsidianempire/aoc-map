@@ -82,6 +82,11 @@ def create_token(user_data):
     }
     return jwt.encode(payload, app.secret_key, algorithm='HS256')
 
+def is_admin_user(user_data):
+    """Return True if the user has admin privileges."""
+    username = user_data.get('username', '')
+    return bool(username and username.lower() == 'randmiester')
+
 def verify_token(token):
     """Verify and decode a JWT token."""
     try:
@@ -262,6 +267,7 @@ def callback():
         
         # Create JWT token
         jwt_token = create_token(user_data)
+        admin_flag = is_admin_user(user_data)
         
         return f'''
         <!DOCTYPE html>
@@ -298,7 +304,8 @@ def callback():
                 window.opener.postMessage({{
                     type: 'discord_auth',
                     token: '{jwt_token}',
-                    username: '{user_data['username']}'
+                    username: '{user_data['username']}',
+                    is_admin: {str(admin_flag).lower()}
                 }}, '*');
                 
                 setTimeout(function() {{
@@ -330,7 +337,8 @@ def verify():
     return jsonify({
         'authenticated': True,
         'discord_id': user_data['discord_id'],
-        'username': user_data['username']
+        'username': user_data['username'],
+        'is_admin': is_admin_user(user_data)
     })
 
 @app.route('/pins', methods=['GET'])
@@ -486,13 +494,35 @@ def update_pin(pin_id):
         db.commit()
         cursor.close()
         db.close()
-        
+
         result = dict(updated_pin)
         print(f"✏️ Pin {pin_id} updated by {request.user['username']}")
         return jsonify(result)
-        
+
     except Exception as e:
         print(f"❌ Error updating pin: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/pins/delete_all', methods=['DELETE'])
+@require_auth
+def delete_all_pins():
+    """Delete all pins (admin only)."""
+    try:
+        if not is_admin_user(request.user):
+            return jsonify({'error': 'Admin privileges required'}), 403
+
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('DELETE FROM pins')
+        deleted = cursor.rowcount
+        db.commit()
+        cursor.close()
+        db.close()
+
+        print(f"🔥 Admin {request.user['username']} deleted all pins ({deleted} rows)")
+        return jsonify({'message': 'All pins deleted', 'deleted': deleted or 0})
+    except Exception as e:
+        print(f"❌ Error deleting all pins: {e}")
         return jsonify({'error': str(e)}), 500
 
 # ==================== STARTUP ====================

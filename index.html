@@ -119,6 +119,14 @@
             border-color: #d4a574;
             box-shadow: 0 0 15px rgba(212, 165, 116, 0.3);
         }
+        .btn-danger {
+            background: linear-gradient(135deg, #c41e3a 0%, #8b1a2a 100%);
+            color: #fff;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: linear-gradient(135deg, #e04545 0%, #a3232d 100%);
+            box-shadow: 0 0 15px rgba(196, 30, 58, 0.5);
+        }
         .user-info {
             text-align: center;
             margin-bottom: 15px;
@@ -320,6 +328,7 @@
                     <div class="user-name" id="username"></div>
                 </div>
                 <button class="btn btn-secondary" onclick="logout()">Logout</button>
+                <button class="btn btn-danger" id="deleteAllBtn" style="display: none; margin-top: 10px;" onclick="deleteAllPins()">Delete All Pins</button>
             </div>
         </div>
         
@@ -402,13 +411,13 @@
         // Initialize map using a single high-resolution image
         function initMap() {
             const imageUrl = '/AshesMapVerra.jpg';
-            const imageWidth = 4000;
-            const imageHeight = 2824;
+            const imageWidth = 12288;
+            const imageHeight = 12288;
             const bounds = [[0, 0], [imageHeight, imageWidth]];
 
             map = L.map('map', {
                 crs: L.CRS.Simple,
-                minZoom: -2,
+                minZoom: -4,
                 maxZoom: 6,
                 zoomControl: true
             });
@@ -461,6 +470,14 @@
             document.getElementById('loggedIn').style.display = loggedIn ? 'block' : 'none';
             document.getElementById('username').textContent = username;
             document.getElementById('toggleAddBtn').disabled = !loggedIn;
+            const deleteAllBtn = document.getElementById('deleteAllBtn');
+            const isAdminUser = loggedIn && (
+                (currentUser && currentUser.is_admin) ||
+                (username && username.toLowerCase() === 'randmiester')
+            );
+            if (deleteAllBtn) {
+                deleteAllBtn.style.display = isAdminUser ? 'block' : 'none';
+            }
             
             if (!loggedIn) {
                 addPinMode = false;
@@ -484,11 +501,15 @@
                 window.addEventListener('message', function(event) {
                     if (event.data.type === 'discord_auth') {
                         authToken = event.data.token;
-                        currentUser = { username: event.data.username };
+                        const isAdmin = event.data.is_admin !== undefined
+                            ? Boolean(event.data.is_admin)
+                            : (event.data.username && event.data.username.toLowerCase() === 'randmiester');
+                        currentUser = { username: event.data.username, is_admin: isAdmin };
                         localStorage.setItem('discord_token', authToken);
                         updateAuthUI(true, event.data.username);
                         showStatus('Logged in successfully!');
                         loadPins();
+                        verifyToken();
                     }
                 });
             } catch (error) {
@@ -615,7 +636,10 @@
             const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
             
             const isOwner = currentUser && pin.discord_user_id === currentUser.discord_id;
-            const isAdmin = currentUser && currentUser.username.toLowerCase() === 'randmiester';
+            const isAdmin = currentUser && (
+                currentUser.is_admin ||
+                (currentUser.username && currentUser.username.toLowerCase() === 'randmiester')
+            );
             const canDelete = isOwner || isAdmin;
             
             const deleteBtn = canDelete ? 
@@ -656,6 +680,47 @@
                 } else {
                     const error = await response.json();
                     showStatus(error.error || 'Error deleting pin', true);
+                }
+            } catch (error) {
+                showStatus('Error connecting to server', true);
+                console.error('Error:', error);
+            }
+        }
+
+        async function deleteAllPins() {
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+
+            const isAdminUser = currentUser && (
+                currentUser.is_admin ||
+                (currentUser.username && currentUser.username.toLowerCase() === 'randmiester')
+            );
+
+            if (!isAdminUser) {
+                showStatus('Admin privileges required', true);
+                return;
+            }
+
+            if (!confirm('Delete ALL pins? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/pins/delete_all`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (response.ok) {
+                    Object.values(markers).forEach(marker => map.removeLayer(marker));
+                    markers = {};
+                    showStatus('All pins deleted');
+                    loadPins();
+                } else {
+                    const error = await response.json();
+                    showStatus(error.error || 'Error deleting all pins', true);
                 }
             } catch (error) {
                 showStatus('Error connecting to server', true);
