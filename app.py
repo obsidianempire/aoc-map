@@ -468,9 +468,10 @@ def update_pin(pin_id):
             return jsonify({'error': 'Pin not found'}), 404
         
         pin_dict = dict(pin)
-        
-        # Check ownership
-        if pin_dict['discord_user_id'] != request.user['discord_id']:
+        is_admin = is_admin_user(request.user)
+
+        # Check ownership or admin privileges
+        if pin_dict['discord_user_id'] != request.user['discord_id'] and not is_admin:
             cursor.close()
             db.close()
             return jsonify({'error': 'You can only edit your own pins'}), 403
@@ -496,7 +497,11 @@ def update_pin(pin_id):
         db.close()
 
         result = dict(updated_pin)
-        print(f"✏️ Pin {pin_id} updated by {request.user['username']}")
+        actor = request.user['username']
+        if is_admin and pin_dict['discord_user_id'] != request.user['discord_id']:
+            print(f"✏️ Admin {actor} updated pin {pin_id} owned by {pin_dict['discord_username']}")
+        else:
+            print(f"✏️ Pin {pin_id} updated by {actor}")
         return jsonify(result)
 
     except Exception as e:

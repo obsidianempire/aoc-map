@@ -166,6 +166,20 @@
             color: #ff6b6b;
             border-color: #ff6b6b;
         }
+        .pin-popup-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .pin-popup-actions button {
+            flex: 1 1 45%;
+        }
+        .pin-hint {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #8b8b8b;
+        }
         
         .legend {
             position: absolute;
@@ -382,7 +396,7 @@
                 <option value="other">Other</option>
             </select>
             <div class="modal-buttons">
-                <button class="btn btn-primary" onclick="submitPin()">Add Pin</button>
+                <button class="btn btn-primary" id="pinSubmitButton" onclick="submitPin()">Add Pin</button>
                 <button class="btn btn-secondary" onclick="closePinModal()">Cancel</button>
             </div>
         </div>
@@ -392,6 +406,7 @@
     <script>
         let map;
         let markers = {};
+        let pinsById = {};
         let addPinMode = false;
         let tempLatLng = null;
         let authToken = null;
@@ -405,8 +420,21 @@
             epicTree: '#4a90e2',
             epicStone: '#8b4513',
             area: '#6b4e71',
-            other: '#5a9a9a'
+            other: '#5a9a9a',
+            // Backwards compatibility with legacy categories
+            poi: '#4a90e2',
+            boss: '#c41e3a',
+            resource: '#d4a574',
+            guild: '#8b4513',
+            dungeon: '#6b4e71'
         };
+
+        const pinModal = document.getElementById('pinModal');
+        const pinTitleInput = document.getElementById('pinTitle');
+        const pinDescriptionInput = document.getElementById('pinDescription');
+        const pinCategorySelect = document.getElementById('pinCategory');
+        const pinSubmitButton = document.getElementById('pinSubmitButton');
+        const pinModalTitle = document.querySelector('#pinModal h3');
 
         // Initialize map using a single high-resolution image
         function initMap() {
@@ -429,7 +457,7 @@
             map.on('click', function(e) {
                 if (addPinMode && authToken) {
                     tempLatLng = e.latlng;
-                    showPinModal();
+                    showPinModal('create');
                 }
             });
 
@@ -484,6 +512,7 @@
                 document.getElementById('addModeStatus').textContent = 'Click mode: View Only (Login Required)';
                 document.getElementById('addModeStatus').style.color = '#8b8b8b';
             }
+            refreshMarkerPermissions();
         }
 
         async function loginWithDiscord() {
@@ -532,13 +561,14 @@
                 showStatus('Please login first', true);
                 return;
             }
-            
+
             addPinMode = !addPinMode;
             const status = document.getElementById('addModeStatus');
             if (addPinMode) {
                 status.textContent = 'Click mode: ADD PIN (click map to add)';
                 status.style.color = '#d4a574';
                 status.style.borderColor = '#d4a574';
+                showStatus('Click on the map to place a pin');
             } else {
                 status.textContent = 'Click mode: View Only';
                 status.style.color = '#8b8b8b';
@@ -546,32 +576,91 @@
             }
         }
 
-        function showPinModal() {
-            document.getElementById('pinModal').style.display = 'block';
-            document.getElementById('pinTitle').value = '';
-            document.getElementById('pinDescription').value = '';
-            document.getElementById('pinCategory').value = 'poi';
+        function showPinModal(mode = 'create', pin = null) {
+            pinModal.dataset.mode = mode;
+            pinModal.dataset.pinId = pin ? pin.id : '';
+
+            const availableCategories = Array.from(pinCategorySelect.options).map(option => option.value);
+
+            if (mode === 'edit' && pin) {
+                pinModalTitle.textContent = 'Edit Pin';
+                pinSubmitButton.textContent = 'Save Changes';
+                pinTitleInput.value = pin.title || '';
+                pinDescriptionInput.value = pin.description || '';
+                const categoryValue = availableCategories.includes(pin.category) ? pin.category : 'other';
+                pinCategorySelect.value = categoryValue;
+                tempLatLng = { lat: parseFloat(pin.lat), lng: parseFloat(pin.lng) };
+            } else {
+                pinModalTitle.textContent = 'Add New Pin';
+                pinSubmitButton.textContent = 'Add Pin';
+                pinTitleInput.value = '';
+                pinDescriptionInput.value = '';
+                const defaultCategory = availableCategories.includes('other') ? 'other' : availableCategories[0];
+                pinCategorySelect.value = defaultCategory;
+            }
+
+            pinModal.style.display = 'block';
         }
 
         function closePinModal() {
-            document.getElementById('pinModal').style.display = 'none';
+            pinModal.style.display = 'none';
+            pinModal.dataset.mode = 'create';
+            pinModal.dataset.pinId = '';
+            pinModalTitle.textContent = 'Add New Pin';
+            pinSubmitButton.textContent = 'Add Pin';
             tempLatLng = null;
         }
 
         async function submitPin() {
-            const title = document.getElementById('pinTitle').value.trim();
-            const description = document.getElementById('pinDescription').value.trim();
-            const category = document.getElementById('pinCategory').value;
+            const mode = pinModal.dataset.mode || 'create';
+            const title = pinTitleInput.value.trim();
+            const description = pinDescriptionInput.value.trim();
+            const category = pinCategorySelect.value;
 
             if (!title) {
                 alert('Please enter a title for the pin');
                 return;
             }
 
+            if (mode === 'edit') {
+                const pinId = Number(pinModal.dataset.pinId);
+                const existingPin = pinsById[pinId];
+                if (!existingPin) {
+                    showStatus('Pin not found', true);
+                    return;
+                }
+
+                const latValue = tempLatLng ? tempLatLng.lat : existingPin.lat;
+                const lngValue = tempLatLng ? tempLatLng.lng : existingPin.lng;
+                const updates = {
+                    title,
+                    description,
+                    category,
+                    lat: Number(latValue),
+                    lng: Number(lngValue)
+                };
+
+                const success = await savePinChanges(pinId, updates, 'Pin updated');
+                if (success) {
+                    closePinModal();
+                }
+                return;
+            }
+
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+
+            if (!tempLatLng) {
+                showStatus('Click on the map to set a location', true);
+                return;
+            }
+
             const pinData = {
-                title: title,
-                description: description,
-                category: category,
+                title,
+                description,
+                category,
                 lat: tempLatLng.lat,
                 lng: tempLatLng.lng
             };
@@ -605,14 +694,13 @@
             try {
                 showStatus('Loading pins...');
                 const response = await fetch(`${API_URL}/pins`);
-                
                 if (response.ok) {
                     const pins = await response.json();
-                    
                     Object.values(markers).forEach(marker => map.removeLayer(marker));
                     markers = {};
-                    
+                    pinsById = {};
                     pins.forEach(pin => addMarkerToMap(pin));
+                    refreshMarkerPermissions();
                     showStatus(`Loaded ${pins.length} pins`);
                 } else {
                     showStatus('Error loading pins', true);
@@ -624,44 +712,28 @@
         }
 
         function addMarkerToMap(pin) {
-            const color = categoryColors[pin.category] || categoryColors.other;
-            
-            const icon = L.divIcon({
-                className: 'custom-pin',
-                html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d4a574; box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px ${color}40;"></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-            });
+            const normalized = normalizePin(pin);
+            pinsById[normalized.id] = normalized;
 
-            const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
-            
-            const isOwner = currentUser && pin.discord_user_id === currentUser.discord_id;
-            const isAdmin = currentUser && (
-                currentUser.is_admin ||
-                (currentUser.username && currentUser.username.toLowerCase() === 'randmiester')
-            );
-            const canDelete = isOwner || isAdmin;
-            
-            const deleteBtn = canDelete ? 
-                `<button onclick="deletePin(${pin.id})" style="margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">${isAdmin && !isOwner ? 'Delete (Admin)' : 'Delete'}</button>` :
-                '';
-            
-            const popupContent = `
-                <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
-                    <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
-                    ${pin.description ? pin.description + '<br>' : ''}
-                    <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
-                    <div style="font-size: 10px; color: #666; margin-top: 4px;">Added by: ${pin.discord_username}</div>
-                    ${deleteBtn}
-                </div>
-            `;
-            
-            marker.bindPopup(popupContent);
-            markers[pin.id] = marker;
+            const icon = createPinIcon(normalized.category);
+            const canEdit = canCurrentUserEdit(normalized);
+            const marker = L.marker([normalized.lat, normalized.lng], { icon, draggable: canEdit }).addTo(map);
+            marker.pinId = normalized.id;
+            marker.bindPopup(buildPopupContent(normalized));
+            marker.on('dragend', handleMarkerDrag);
+            if (!canEdit && marker.dragging) {
+                marker.dragging.disable();
+            }
+            markers[normalized.id] = marker;
         }
 
         async function deletePin(pinId) {
             if (!confirm('Are you sure you want to delete this pin?')) {
+                return;
+            }
+
+            if (!authToken) {
+                showStatus('Please login first', true);
                 return;
             }
 
@@ -676,6 +748,7 @@
                         map.removeLayer(markers[pinId]);
                         delete markers[pinId];
                     }
+                    delete pinsById[pinId];
                     showStatus('Pin deleted successfully');
                 } else {
                     const error = await response.json();
@@ -684,6 +757,190 @@
             } catch (error) {
                 showStatus('Error connecting to server', true);
                 console.error('Error:', error);
+            }
+        }
+
+        function createPinIcon(category) {
+            const color = categoryColors[category] || categoryColors.other;
+            return L.divIcon({
+                className: 'custom-pin',
+                html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d4a574; box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px ${color}40;"></div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+        }
+
+        function normalizePin(pin) {
+            const lat = Number(pin.lat);
+            const lng = Number(pin.lng);
+            return {
+                ...pin,
+                lat: Number.isFinite(lat) ? lat : pin.lat,
+                lng: Number.isFinite(lng) ? lng : pin.lng
+            };
+        }
+
+        function canCurrentUserAdmin() {
+            return currentUser && (
+                currentUser.is_admin ||
+                (currentUser.username && currentUser.username.toLowerCase() === 'randmiester')
+            );
+        }
+
+        function canCurrentUserEdit(pin) {
+            if (!currentUser) return false;
+            const isOwner = pin.discord_user_id === currentUser.discord_id;
+            return isOwner || canCurrentUserAdmin();
+        }
+
+        function canCurrentUserDelete(pin) {
+            return canCurrentUserEdit(pin);
+        }
+
+        function buildPopupContent(pin) {
+            const canEdit = canCurrentUserEdit(pin);
+            const canDelete = canCurrentUserDelete(pin);
+            const isOwner = currentUser && pin.discord_user_id === currentUser.discord_id;
+            const isAdmin = canCurrentUserAdmin();
+            const deleteLabel = isAdmin && !isOwner ? 'Delete (Admin)' : 'Delete';
+
+            const buttons = [];
+            if (canEdit) {
+                buttons.push(`<button onclick="startEditPin(${pin.id})" style="padding: 6px 12px; background: linear-gradient(135deg, #4a90e2, #2a65a1); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">Edit</button>`);
+            }
+            if (canDelete) {
+                buttons.push(`<button onclick="deletePin(${pin.id})" style="padding: 6px 12px; background: linear-gradient(135deg, #c41e3a, #8b1a2a); color: white; border: 1px solid #d4a574; border-radius: 4px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 11px; text-transform: uppercase;">${deleteLabel}</button>`);
+            }
+
+            const actions = buttons.length ? `<div class="pin-popup-actions">${buttons.join('')}</div>` : '';
+            const moveHint = canEdit ? `<div class="pin-hint">Drag marker to reposition</div>` : '';
+
+            return `
+                <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
+                    <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
+                    ${pin.description ? `${pin.description}<br>` : ''}
+                    <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
+                    <div style="font-size: 10px; color: #666; margin-top: 4px;">Added by: ${pin.discord_username}</div>
+                    ${actions}
+                    ${moveHint}
+                </div>
+            `;
+        }
+
+        function refreshMarkerPermissions() {
+            Object.values(markers).forEach(marker => {
+                const pin = pinsById[marker.pinId];
+                if (!pin) return;
+                const canEdit = canCurrentUserEdit(pin);
+                marker.options.draggable = !!canEdit;
+                if (marker.dragging) {
+                    if (canEdit) {
+                        marker.dragging.enable();
+                    } else {
+                        marker.dragging.disable();
+                    }
+                }
+                marker.bindPopup(buildPopupContent(pin));
+            });
+        }
+
+        function startEditPin(pinId) {
+            const pin = pinsById[pinId];
+            if (!pin) {
+                showStatus('Pin not found', true);
+                return;
+            }
+            if (!canCurrentUserEdit(pin)) {
+                showStatus('You can only edit your own pins', true);
+                return;
+            }
+            if (addPinMode) {
+                addPinMode = false;
+                const status = document.getElementById('addModeStatus');
+                status.textContent = 'Click mode: View Only';
+                status.style.color = '#8b8b8b';
+                status.style.borderColor = '#8b4513';
+            }
+            tempLatLng = { lat: pin.lat, lng: pin.lng };
+            showPinModal('edit', pin);
+        }
+
+        async function savePinChanges(pinId, updates, successMessage, revertFn) {
+            if (!authToken) {
+                showStatus('Please login first', true);
+                if (typeof revertFn === 'function') revertFn();
+                return false;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/pins/${pinId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(updates)
+                });
+
+                if (response.ok) {
+                    const updatedPin = await response.json();
+                    applyPinUpdate(updatedPin);
+                    showStatus(successMessage);
+                    return true;
+                } else {
+                    const error = await response.json();
+                    showStatus(error.error || 'Error updating pin', true);
+                    if (typeof revertFn === 'function') revertFn();
+                }
+            } catch (error) {
+                showStatus('Error connecting to server', true);
+                console.error('Error:', error);
+                if (typeof revertFn === 'function') revertFn();
+            }
+            return false;
+        }
+
+        function applyPinUpdate(pin) {
+            const normalized = normalizePin(pin);
+            pinsById[normalized.id] = normalized;
+            const marker = markers[normalized.id];
+            if (marker) {
+                marker.setLatLng([normalized.lat, normalized.lng]);
+                marker.setIcon(createPinIcon(normalized.category));
+                marker.bindPopup(buildPopupContent(normalized));
+                const canEdit = canCurrentUserEdit(normalized);
+                marker.options.draggable = !!canEdit;
+                if (marker.dragging) {
+                    if (canEdit) {
+                        marker.dragging.enable();
+                    } else {
+                        marker.dragging.disable();
+                    }
+                }
+            }
+        }
+
+        async function handleMarkerDrag(event) {
+            const marker = event.target;
+            const pin = pinsById[marker.pinId];
+            if (!pin) return;
+
+            if (!canCurrentUserEdit(pin)) {
+                marker.setLatLng([pin.lat, pin.lng]);
+                showStatus('You can only move your own pins', true);
+                return;
+            }
+
+            const originalPosition = { lat: pin.lat, lng: pin.lng };
+            const newPosition = marker.getLatLng();
+            const updates = { lat: newPosition.lat, lng: newPosition.lng };
+
+            const success = await savePinChanges(pin.id, updates, 'Pin moved', () => {
+                marker.setLatLng([originalPosition.lat, originalPosition.lng]);
+            });
+
+            if (!success) {
+                marker.setLatLng([originalPosition.lat, originalPosition.lng]);
             }
         }
 
@@ -716,6 +973,7 @@
                 if (response.ok) {
                     Object.values(markers).forEach(marker => map.removeLayer(marker));
                     markers = {};
+                    pinsById = {};
                     showStatus('All pins deleted');
                     loadPins();
                 } else {
