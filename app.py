@@ -5,6 +5,7 @@ import requests
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
+import json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
@@ -66,6 +67,20 @@ def init_db():
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS paths (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    lines JSONB NOT NULL,
+                    discord_user_id TEXT NOT NULL,
+                    discord_username TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
         db.commit()
         db.close()
         print("✅ PostgreSQL database initialized successfully!")
@@ -86,6 +101,37 @@ def is_admin_user(user_data):
     """Return True if the user has admin privileges."""
     username = user_data.get('username', '')
     return bool(username and username.lower() == 'randmiester')
+
+def normalize_line_coordinates(lines):
+    """Validate and normalize path line coordinates."""
+    if not isinstance(lines, list) or not lines:
+        raise ValueError('Lines must be a non-empty list')
+
+    normalized = []
+    for line in lines:
+        if not isinstance(line, (list, tuple)) or len(line) < 2:
+            raise ValueError('Each line must include at least two coordinates')
+        normalized_line = []
+        for point in line:
+            if isinstance(point, dict):
+                lat = point.get('lat') if point.get('lat') is not None else point.get('latitude')
+                lng = point.get('lng') if point.get('lng') is not None else point.get('lon') or point.get('longitude')
+            elif isinstance(point, (list, tuple)) and len(point) >= 2:
+                lat, lng = point[0], point[1]
+            else:
+                raise ValueError('Invalid coordinate format')
+
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except (TypeError, ValueError):
+                raise ValueError('Coordinates must be numeric values')
+
+            normalized_line.append({'lat': lat, 'lng': lng})
+
+        normalized.append(normalized_line)
+
+    return normalized
 
 def verify_token(token):
     """Verify and decode a JWT token."""
@@ -528,6 +574,191 @@ def delete_all_pins():
         return jsonify({'message': 'All pins deleted', 'deleted': deleted or 0})
     except Exception as e:
         print(f"❌ Error deleting all pins: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/paths', methods=['GET'])
+def get_paths():
+    """Retrieve all saved paths."""
+    try:
+        db = get_db()
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('SELECT * FROM paths ORDER BY created_at DESC')
+        paths = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        def coerce_lines(record):
+            lines = record.get('lines')
+            if isinstance(lines, str):
+                try:
+                    record['lines'] = json.loads(lines)
+                except json.JSONDecodeError:
+                    record['lines'] = []
+            return record
+
+        result = [coerce_lines(dict(path)) for path in paths]
+        return jsonify(result)
+    except Exception as e:
+        print(f"❌ Error getting paths: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/paths', methods=['POST'])
+@require_auth
+def create_path():
+    """Create a new path entry."""
+    try:
+        data = request.json or {}
+        name = data.get('name', '').strip()
+        description = (data.get('description') or '').strip()
+        lines_input = data.get('lines')
+
+        if not name:
+            return jsonify({'error': 'Name is required'}), 400
+
+        try:
+            normalized_lines = normalize_line_coordinates(lines_input)
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+
+        db = get_db()
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute(
+            '''
+            INSERT INTO paths (name, description, lines, discord_user_id, discord_username)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING *
+            ''',
+            (
+                name,
+                description,
+                json.dumps(normalized_lines),
+                request.user['discord_id'],
+                request.user['username']
+            )
+        )
+        new_path = cursor.fetchone()
+        db.commit()
+        cursor.close()
+        db.close()
+
+        path_dict = dict(new_path)
+        path_dict['lines'] = normalized_lines
+        print(f"🛣️ Path created by {request.user['username']}: {name}")
+        return jsonify(path_dict), 201
+    except Exception as e:
+        print(f"❌ Error creating path: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/paths/<int:path_id>', methods=['PUT'])
+@require_auth
+def update_path(path_id):
+    """Update an existing path."""
+    try:
+        data = request.json or {}
+        db = get_db()
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('SELECT * FROM paths WHERE id = %s', (path_id,))
+        existing = cursor.fetchone()
+
+        if not existing:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'Path not found'}), 404
+
+        path_owner_id = existing['discord_user_id']
+        is_admin = is_admin_user(request.user)
+        if request.user['discord_id'] != path_owner_id and not is_admin:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'You can only edit your own paths'}), 403
+
+        name = data.get('name', existing['name']).strip()
+        description = (data.get('description') if data.get('description') is not None else existing['description'] or '').strip()
+        lines_input = data.get('lines')
+
+        if not name:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'Name is required'}), 400
+
+        if lines_input is not None:
+            try:
+                normalized_lines = normalize_line_coordinates(lines_input)
+            except ValueError as exc:
+                cursor.close()
+                db.close()
+                return jsonify({'error': str(exc)}), 400
+        else:
+            lines_value = existing['lines']
+            if isinstance(lines_value, str):
+                normalized_lines = json.loads(lines_value)
+            else:
+                normalized_lines = lines_value
+
+        cursor.execute(
+            '''
+            UPDATE paths
+            SET name = %s,
+                description = %s,
+                lines = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            RETURNING *
+            ''',
+            (name, description, json.dumps(normalized_lines), path_id)
+        )
+        updated_path = cursor.fetchone()
+        db.commit()
+        cursor.close()
+        db.close()
+
+        path_dict = dict(updated_path)
+        path_dict['lines'] = normalized_lines
+        actor = request.user['username']
+        if is_admin and path_owner_id != request.user['discord_id']:
+            print(f"🛠️ Admin {actor} updated path {path_id} owned by {existing['discord_username']}")
+        else:
+            print(f"🛠️ Path {path_id} updated by {actor}")
+        return jsonify(path_dict)
+    except Exception as e:
+        print(f"❌ Error updating path: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/paths/<int:path_id>', methods=['DELETE'])
+@require_auth
+def delete_path(path_id):
+    """Delete a path entry."""
+    try:
+        db = get_db()
+        cursor = db.cursor(row_factory=dict_row)
+        cursor.execute('SELECT * FROM paths WHERE id = %s', (path_id,))
+        existing = cursor.fetchone()
+
+        if not existing:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'Path not found'}), 404
+
+        path_owner_id = existing['discord_user_id']
+        is_admin = is_admin_user(request.user)
+        if request.user['discord_id'] != path_owner_id and not is_admin:
+            cursor.close()
+            db.close()
+            return jsonify({'error': 'You can only delete your own paths'}), 403
+
+        cursor.execute('DELETE FROM paths WHERE id = %s', (path_id,))
+        db.commit()
+        cursor.close()
+        db.close()
+
+        actor = request.user['username']
+        if is_admin and path_owner_id != request.user['discord_id']:
+            print(f"🧹 Admin {actor} deleted path {path_id} owned by {existing['discord_username']}")
+        else:
+            print(f"🧹 Path {path_id} deleted by {actor}")
+        return jsonify({'message': 'Path deleted'})
+    except Exception as e:
+        print(f"❌ Error deleting path: {e}")
         return jsonify({'error': str(e)}), 500
 
 # ==================== STARTUP ====================

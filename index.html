@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Obsidian Empire - Verra Map</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Philosopher:wght@400;700&display=swap" rel="stylesheet">
@@ -195,6 +196,79 @@
             display: flex;
             gap: 8px;
             margin-top: 12px;
+        }
+        .paths-group {
+            margin-top: 18px;
+            border-top: 1px solid rgba(212, 165, 116, 0.3);
+            padding-top: 14px;
+        }
+        .paths-group h4 {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            color: #d4a574;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .paths-list {
+            margin-top: 12px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .path-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .path-info {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            gap: 2px;
+        }
+        .path-item label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+        .path-item input[type="checkbox"] {
+            accent-color: #d4a574;
+            cursor: pointer;
+        }
+        .path-name {
+            color: #d4a574;
+            font-weight: 600;
+        }
+        .path-meta {
+            display: block;
+            font-size: 10px;
+            color: #8b8b8b;
+        }
+        .path-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .path-actions button {
+            padding: 4px 8px;
+            font-size: 10px;
+            border-radius: 4px;
+            border: 1px solid #8b4513;
+            background: rgba(20, 20, 20, 0.7);
+            color: #d4a574;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+        }
+        .path-actions button:hover {
+            background: rgba(139, 69, 19, 0.3);
+        }
+        .paths-empty {
+            font-size: 11px;
+            color: #8b8b8b;
         }
         .user-info {
             text-align: center;
@@ -553,6 +627,17 @@
                 <button class="btn btn-secondary" id="filterClearBtn" disabled>Clear</button>
             </div>
         </div>
+
+        <div class="paths-group">
+            <h4>Paths</h4>
+            <button class="btn btn-secondary" id="togglePathsBtn">Hide All Paths</button>
+            <button class="btn btn-primary" id="startPathBtn" disabled style="margin-top: 10px;">Start New Path</button>
+            <div class="filter-actions" id="pathDrawingActions" style="display: none;">
+                <button class="btn btn-secondary" id="finishPathBtn">Save Path</button>
+                <button class="btn btn-secondary" id="cancelPathBtn">Cancel</button>
+            </div>
+            <div class="paths-list" id="pathsList"></div>
+        </div>
     </div>
 
     <div class="legend" id="legendPanel">
@@ -621,7 +706,21 @@
         </div>
     </div>
 
+    <div id="pathModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cancelPathSave()">&times;</span>
+            <h3>Save Path</h3>
+            <input type="text" id="pathName" placeholder="Path Name" maxlength="80">
+            <textarea id="pathDescription" placeholder="Description (optional)"></textarea>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="submitPath()">Save Path</button>
+                <button class="btn btn-secondary" onclick="cancelPathSave()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script>
         let map;
         let markers = {};
@@ -871,6 +970,15 @@
         const categoryFiltersContainer = document.getElementById('categoryFilters');
         const filterSelectAllBtn = document.getElementById('filterSelectAllBtn');
         const filterClearBtn = document.getElementById('filterClearBtn');
+        const pathsListContainer = document.getElementById('pathsList');
+        const togglePathsBtn = document.getElementById('togglePathsBtn');
+        const startPathBtn = document.getElementById('startPathBtn');
+        const finishPathBtn = document.getElementById('finishPathBtn');
+        const cancelPathBtn = document.getElementById('cancelPathBtn');
+        const pathDrawingActions = document.getElementById('pathDrawingActions');
+        const pathModal = document.getElementById('pathModal');
+        const pathNameInput = document.getElementById('pathName');
+        const pathDescriptionInput = document.getElementById('pathDescription');
         const displayCategoryOrder = [
             'legendaryTree',
             'epicTree',
@@ -884,7 +992,431 @@
         ];
         const allCategoryKeys = Array.from(new Set(Object.keys(categoryStyles)));
         let activeCategoryKeys = new Set();
+        let pathsById = {};
+        let pathLayersById = {};
+        let pathVisibilityMap = {};
+        let pathsVisible = true;
+        let drawingPath = false;
+        let tempPathLines = [];
+let tempPathLayers = [];
+let pathDrawHandler = null;
+const PATH_STYLE = { color: '#d4a574', weight: 4, opacity: 0.75, lineJoin: 'round', lineCap: 'round' };
+const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArray: '6 4', lineJoin: 'round', lineCap: 'round' };
 
+        function normalizePath(path) {
+            let rawLines = path.lines;
+            if (typeof rawLines === 'string') {
+                try {
+                    rawLines = JSON.parse(rawLines);
+                } catch (err) {
+                    rawLines = [];
+                }
+            }
+            if (!Array.isArray(rawLines)) {
+                rawLines = [];
+            }
+
+            const normalizedLines = rawLines.map(line => {
+                if (!Array.isArray(line)) return [];
+                return line.map(point => {
+                    if (point && typeof point === 'object') {
+                        const lat = Number(point.lat ?? point.latitude ?? point[0]);
+                        const lng = Number(point.lng ?? point.lon ?? point.longitude ?? point[1]);
+                        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                            return { lat, lng };
+                        }
+                    } else if (Array.isArray(point) && point.length >= 2) {
+                        const lat = Number(point[0]);
+                        const lng = Number(point[1]);
+                        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                            return { lat, lng };
+                        }
+                    }
+                    return null;
+                }).filter(Boolean);
+            }).filter(line => line.length >= 2);
+
+            return {
+                ...path,
+                id: String(path.id),
+                lines: normalizedLines
+            };
+        }
+
+        function addPathLayer(path) {
+            const normalized = normalizePath(path);
+            pathsById[normalized.id] = normalized;
+
+            const existingGroup = pathLayersById[normalized.id];
+            if (existingGroup) {
+                map.removeLayer(existingGroup);
+            }
+
+            const group = L.featureGroup();
+            normalized.lines.forEach(line => {
+                const latlngs = line.map(point => [point.lat, point.lng]);
+                L.polyline(latlngs, PATH_STYLE).addTo(group);
+            });
+
+            pathLayersById[normalized.id] = group;
+
+            if (pathsVisible && (pathVisibilityMap[normalized.id] ?? true)) {
+                group.addTo(map);
+            }
+        }
+
+        function removePathLayer(pathId) {
+            const key = String(pathId);
+            const group = pathLayersById[key];
+            if (group) {
+                map.removeLayer(group);
+                delete pathLayersById[key];
+            }
+            delete pathsById[key];
+            delete pathVisibilityMap[key];
+        }
+
+        function updatePathToggleButton() {
+            if (!togglePathsBtn) return;
+            const hasPaths = Object.keys(pathsById).length > 0;
+            togglePathsBtn.disabled = !hasPaths;
+            togglePathsBtn.textContent = `${pathsVisible ? 'Hide' : 'Show'} All Paths`;
+        }
+
+        function syncPathsVisibilityInputs() {
+            if (!pathsListContainer) return;
+            pathsListContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                const key = input.value;
+                input.checked = pathVisibilityMap[key] !== false;
+            });
+        }
+
+        function applyPathVisibility() {
+            Object.entries(pathLayersById).forEach(([id, group]) => {
+                const shouldShow = pathsVisible && (pathVisibilityMap[id] ?? true);
+                const isShown = map.hasLayer(group);
+                if (shouldShow && !isShown) {
+                    group.addTo(map);
+                } else if (!shouldShow && isShown) {
+                    map.removeLayer(group);
+                }
+            });
+            syncPathsVisibilityInputs();
+            updatePathToggleButton();
+        }
+
+        function canCurrentUserManagePath(path) {
+            if (!currentUser) return false;
+            return path.discord_user_id === currentUser.discord_id || canCurrentUserAdmin();
+        }
+
+        function renderPathsList() {
+            if (!pathsListContainer) return;
+            pathsListContainer.innerHTML = '';
+
+            const toDate = (value) => {
+                if (!value) return 0;
+                const iso = typeof value === 'string' ? value.replace(' ', 'T') : value;
+                const time = Date.parse(iso);
+                return Number.isFinite(time) ? time : 0;
+            };
+            const entries = Object.values(pathsById).sort((a, b) => {
+                const aDate = toDate(a.updated_at || a.created_at);
+                const bDate = toDate(b.updated_at || b.created_at);
+                return bDate - aDate;
+            });
+            if (!entries.length) {
+                const empty = document.createElement('div');
+                empty.className = 'paths-empty';
+                empty.textContent = authToken ? 'No paths yet. Draw a new path to get started.' : 'No paths available.';
+                pathsListContainer.appendChild(empty);
+                updatePathToggleButton();
+                return;
+            }
+
+            entries.forEach(path => {
+                const item = document.createElement('div');
+                item.className = 'path-item';
+
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = path.id;
+                checkbox.checked = pathVisibilityMap[path.id] !== false;
+                checkbox.addEventListener('change', (event) => {
+                    pathVisibilityMap[path.id] = event.target.checked;
+                    applyPathVisibility();
+                });
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'path-name';
+                nameSpan.textContent = path.name;
+                if (path.description) {
+                    nameSpan.title = path.description;
+                }
+
+                label.appendChild(checkbox);
+                label.appendChild(nameSpan);
+
+                const meta = document.createElement('span');
+                meta.className = 'path-meta';
+                const lineCount = path.lines ? path.lines.length : 0;
+                const owner = path.discord_username || 'Unknown';
+                meta.textContent = `Lines: ${lineCount} • ${owner}`;
+
+                const infoContainer = document.createElement('div');
+                infoContainer.className = 'path-info';
+                infoContainer.appendChild(label);
+                infoContainer.appendChild(meta);
+
+                const actions = document.createElement('div');
+                actions.className = 'path-actions';
+
+                if (canCurrentUserManagePath(path)) {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.addEventListener('click', () => deletePath(path.id));
+                    actions.appendChild(deleteBtn);
+                }
+
+                item.appendChild(infoContainer);
+                item.appendChild(actions);
+                pathsListContainer.appendChild(item);
+            });
+
+            updatePathToggleButton();
+        }
+
+        function updatePathControls() {
+            const loggedIn = !!currentUser;
+            const drawAvailable = !!(window.L && L.Draw && L.Draw.Polyline);
+            if (startPathBtn) startPathBtn.disabled = !loggedIn || drawingPath || !drawAvailable;
+            if (finishPathBtn) finishPathBtn.disabled = !drawingPath || tempPathLines.length === 0;
+            if (cancelPathBtn) cancelPathBtn.disabled = !drawingPath;
+            updatePathToggleButton();
+        }
+
+        function toggleAllPaths() {
+            pathsVisible = !pathsVisible;
+            applyPathVisibility();
+            showStatus(pathsVisible ? 'Paths shown' : 'Paths hidden');
+        }
+
+        function resetPathDrawingState(options = {}) {
+            const { keepTempLines = false } = options;
+            if (!keepTempLines) {
+                tempPathLayers.forEach(layer => map.removeLayer(layer));
+                tempPathLayers = [];
+                tempPathLines = [];
+            }
+            drawingPath = false;
+            if (pathDrawHandler) {
+                pathDrawHandler.disable();
+                pathDrawHandler = null;
+            }
+            if (pathDrawingActions) pathDrawingActions.style.display = 'none';
+            if (startPathBtn) startPathBtn.disabled = !authToken;
+            updatePathControls();
+        }
+
+        function cancelPathDrawing() {
+            resetPathDrawingState();
+            cancelPathSave();
+            showStatus('Path drawing cancelled');
+        }
+
+        function enablePathDrawing() {
+            if (!L.Draw || !L.Draw.Polyline) {
+                showStatus('Drawing tools are unavailable right now.', true);
+                resetPathDrawingState();
+                return;
+            }
+            if (pathDrawHandler) {
+                pathDrawHandler.disable();
+                pathDrawHandler = null;
+            }
+            pathDrawHandler = new L.Draw.Polyline(map, { shapeOptions: PATH_PREVIEW_STYLE });
+            pathDrawHandler.enable();
+        }
+
+        function startPathDrawing() {
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+            if (!window.L || !L.Draw || !L.Draw.Polyline) {
+                showStatus('Drawing tools are unavailable right now.', true);
+                return;
+            }
+            cancelPathSave();
+            resetPathDrawingState();
+            drawingPath = true;
+            tempPathLines = [];
+            tempPathLayers = [];
+            if (pathDrawingActions) pathDrawingActions.style.display = 'flex';
+            showStatus('Drawing mode enabled. Click on the map to trace your path.');
+            enablePathDrawing();
+            updatePathControls();
+        }
+
+        function handlePathDrawCreated(event) {
+            if (!drawingPath) return;
+            const layer = event.layer;
+            const latlngs = layer.getLatLngs().map(point => ({ lat: point.lat, lng: point.lng }));
+            if (latlngs.length < 2) {
+                showStatus('A path line needs at least two points', true);
+                return;
+            }
+            layer.setStyle(PATH_PREVIEW_STYLE);
+            tempPathLines.push(latlngs);
+            tempPathLayers.push(layer);
+            layer.addTo(map);
+            showStatus(`Captured line ${tempPathLines.length}. Add more or save the path.`);
+            enablePathDrawing();
+            updatePathControls();
+        }
+
+        function openPathSaveModal() {
+            if (!drawingPath) return;
+            if (tempPathLines.length === 0) {
+                showStatus('Draw at least one line before saving the path', true);
+                return;
+            }
+            pathNameInput.value = '';
+            pathDescriptionInput.value = '';
+            pathModal.style.display = 'block';
+            pathNameInput.focus();
+        }
+
+        function cancelPathSave() {
+            if (pathModal) pathModal.style.display = 'none';
+        }
+
+        async function submitPath() {
+            if (!drawingPath) {
+                cancelPathSave();
+                return;
+            }
+            const name = pathNameInput.value.trim();
+            if (!name) {
+                alert('Please provide a name for the path');
+                return;
+            }
+            if (tempPathLines.length === 0) {
+                showStatus('Draw at least one line before saving', true);
+                return;
+            }
+
+            const description = pathDescriptionInput.value.trim();
+            const payload = {
+                name,
+                description,
+                lines: tempPathLines.map(line => line.map(point => ({ lat: point.lat, lng: point.lng })))
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/paths`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const newPath = await response.json();
+                    cancelPathSave();
+                    tempPathLayers.forEach(layer => map.removeLayer(layer));
+                    tempPathLayers = [];
+                    tempPathLines = [];
+                    drawingPath = false;
+                    if (pathDrawingActions) pathDrawingActions.style.display = 'none';
+                    addPathLayer(newPath);
+                    pathVisibilityMap[String(newPath.id)] = true;
+                    applyPathVisibility();
+                    renderPathsList();
+                    updatePathControls();
+                    showStatus('Path saved successfully!');
+                } else {
+                    const error = await response.json();
+                    showStatus(error.error || 'Error saving path', true);
+                }
+            } catch (error) {
+                showStatus('Error connecting to server', true);
+                console.error('Error:', error);
+            } finally {
+                if (pathDrawHandler) {
+                    pathDrawHandler.disable();
+                    pathDrawHandler = null;
+                }
+                if (drawingPath) {
+                    enablePathDrawing();
+                    updatePathControls();
+                }
+            }
+        }
+
+        async function deletePath(pathId) {
+            if (!authToken) {
+                showStatus('Please login first', true);
+                return;
+            }
+            if (!confirm('Delete this path?')) {
+                return;
+            }
+            try {
+                const response = await fetch(`${API_URL}/paths/${pathId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (response.ok) {
+                    removePathLayer(pathId);
+                    renderPathsList();
+                    applyPathVisibility();
+                    updatePathControls();
+                    showStatus('Path deleted');
+                } else {
+                    const error = await response.json();
+                    showStatus(error.error || 'Error deleting path', true);
+                }
+            } catch (error) {
+                showStatus('Error connecting to server', true);
+                console.error('Error:', error);
+            }
+        }
+
+        async function loadPaths() {
+            try {
+                const response = await fetch(`${API_URL}/paths`);
+                if (!response.ok) {
+                    showStatus('Error loading paths', true);
+                    return;
+                }
+                const data = await response.json();
+                Object.values(pathLayersById).forEach(group => map.removeLayer(group));
+                pathLayersById = {};
+
+                const previousVisibility = { ...pathVisibilityMap };
+                pathsById = {};
+                pathVisibilityMap = {};
+
+                data.forEach(path => {
+                    const normalized = normalizePath(path);
+                    const previous = previousVisibility[normalized.id];
+                    pathVisibilityMap[normalized.id] = previous === false ? false : true;
+                    addPathLayer(normalized);
+                });
+
+                renderPathsList();
+                applyPathVisibility();
+            } catch (error) {
+                showStatus('Error loading paths', true);
+                console.error('Error:', error);
+            } finally {
+                updatePathControls();
+            }
+        }
         // Initialize map using a single high-resolution image
         function initMap() {
             const imageUrl = '/AshesMapVerra.jpg';
@@ -909,6 +1441,7 @@
                     showPinModal('create');
                 }
             });
+            map.on(L.Draw.Event.CREATED, handlePathDrawCreated);
 
             showStatus('Map initialized');
             checkAuth();
@@ -960,8 +1493,11 @@
                 addPinMode = false;
                 document.getElementById('addModeStatus').textContent = 'Click mode: View Only (Login Required)';
                 document.getElementById('addModeStatus').style.color = '#8b8b8b';
+                resetPathDrawingState();
             }
             refreshMarkerPermissions();
+            updatePathControls();
+            renderPathsList();
         }
 
         async function loginWithDiscord() {
@@ -1000,9 +1536,11 @@
             authToken = null;
             currentUser = null;
             localStorage.removeItem('discord_token');
+            resetPathDrawingState();
             updateAuthUI(false);
             showStatus('Logged out');
             loadPins();
+            loadPaths();
         }
 
         function toggleAddMode() {
@@ -1152,6 +1690,7 @@
                     refreshMarkerPermissions();
                     applyCategoryFilters();
                     showStatus(`Loaded ${pins.length} pins`);
+                    loadPaths();
                 } else {
                     showStatus('Error loading pins', true);
                 }
@@ -1463,6 +2002,19 @@
                 status.textContent = 'Ready';
                 status.className = 'status';
             }, 3000);
+        }
+
+        if (togglePathsBtn) {
+            togglePathsBtn.addEventListener('click', toggleAllPaths);
+        }
+        if (startPathBtn) {
+            startPathBtn.addEventListener('click', startPathDrawing);
+        }
+        if (finishPathBtn) {
+            finishPathBtn.addEventListener('click', openPathSaveModal);
+        }
+        if (cancelPathBtn) {
+            cancelPathBtn.addEventListener('click', cancelPathDrawing);
         }
 
         window.onload = function() {
