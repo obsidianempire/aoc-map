@@ -166,6 +166,84 @@
             color: #ff6b6b;
             border-color: #ff6b6b;
         }
+        .custom-pin {
+            background: transparent !important;
+            border: none !important;
+        }
+        .pin-icon {
+            position: relative;
+            width: 30px;
+            height: 34px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            transform: translateY(-4px);
+            --pin-color: #5a9a9a;
+        }
+        .pin-icon::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 6px 4px 0 4px;
+            border-color: var(--pin-color) transparent transparent transparent;
+            filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));
+        }
+        .pin-icon-tree .pin-tree-canopy {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.35), transparent 60%), var(--pin-color);
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.45);
+        }
+        .pin-icon-tree .pin-tree-trunk {
+            width: 6px;
+            height: 10px;
+            background: #5c3b1a;
+            border-radius: 2px;
+            margin-top: -4px;
+        }
+        .pin-icon-rock .pin-rock-shape {
+            width: 22px;
+            height: 17px;
+            border-radius: 60% 40% 55% 45%;
+            background: var(--pin-color);
+            transform: rotate(-8deg);
+            box-shadow: inset -2px -2px 4px rgba(0, 0, 0, 0.35), 0 0 6px rgba(0, 0, 0, 0.4);
+        }
+        .pin-icon-rock .pin-rock-shine {
+            position: absolute;
+            top: 6px;
+            left: 12px;
+            width: 8px;
+            height: 5px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.35);
+            transform: rotate(15deg);
+        }
+        .pin-icon-circle .pin-circle {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--pin-color);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.4), inset 0 0 6px rgba(255, 255, 255, 0.25);
+        }
+        .legend-icon {
+            width: 30px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .legend-icon .pin-icon {
+            transform: scale(0.8);
+        }
+        .legend-icon .pin-icon::after {
+            display: none;
+        }
         .pin-popup-actions {
             display: flex;
             flex-wrap: wrap;
@@ -203,16 +281,9 @@
         .legend-item {
             display: flex;
             align-items: center;
-            margin-bottom: 8px;
+            gap: 10px;
+            margin-bottom: 10px;
             font-size: 13px;
-        }
-        .legend-color {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-            margin-right: 10px;
-            border: 2px solid #d4a574;
-            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
         }
         
         .modal {
@@ -354,27 +425,27 @@
     <div class="legend">
         <h4>Pin Categories</h4>
         <div class="legend-item">
-            <div class="legend-color" style="background: #c41e3a;"></div>
-            <span>Legondary Tree</span>
+            <div class="legend-icon" data-pin-icon="legendaryTree"></div>
+            <span>Legendary Tree</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #d4a574;"></div>
-            <span>Legondary Stone</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: #4a90e2;"></div>
+            <div class="legend-icon" data-pin-icon="epicTree"></div>
             <span>Epic Tree</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #8b4513;"></div>
-            <span>Epic Stone</span>
+            <div class="legend-icon" data-pin-icon="legendaryRock"></div>
+            <span>Legendary Rock</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #6b4e71;"></div>
+            <div class="legend-icon" data-pin-icon="epicRock"></div>
+            <span>Epic Rock</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon" data-pin-icon="area"></div>
             <span>Area</span>
         </div>
         <div class="legend-item">
-            <div class="legend-color" style="background: #5a9a9a;"></div>
+            <div class="legend-icon" data-pin-icon="other"></div>
             <span>Other</span>
         </div>
     </div>
@@ -388,10 +459,10 @@
             <input type="text" id="pinTitle" placeholder="Pin Title" maxlength="50">
             <textarea id="pinDescription" placeholder="Description (optional)"></textarea>
             <select id="pinCategory">
-                <option value="legoTree">Legondary Tree</option>
-                <option value="legoStone">Legondary Stone</option>
+                <option value="legendaryTree">Legendary Tree</option>
                 <option value="epicTree">Epic Tree</option>
-                <option value="epicStone">Epic Stone</option>
+                <option value="legendaryRock">Legendary Rock</option>
+                <option value="epicRock">Epic Rock</option>
                 <option value="area">Area</option>
                 <option value="other">Other</option>
             </select>
@@ -414,20 +485,77 @@
 
         const API_URL = window.location.origin;
 
-        const categoryColors = {
-            legoTree: '#c41e3a',
-            legoStone: '#d4a574',
-            epicTree: '#4a90e2',
-            epicStone: '#8b4513',
-            area: '#6b4e71',
-            other: '#5a9a9a',
-            // Backwards compatibility with legacy categories
-            poi: '#4a90e2',
-            boss: '#c41e3a',
-            resource: '#d4a574',
-            guild: '#8b4513',
-            dungeon: '#6b4e71'
+        const categoryStyles = {
+            legendaryTree: { type: 'tree', color: '#d4af37', label: 'Legendary Tree' },
+            epicTree: { type: 'tree', color: '#9c6bff', label: 'Epic Tree' },
+            legendaryRock: { type: 'rock', color: '#d4af37', label: 'Legendary Rock' },
+            epicRock: { type: 'rock', color: '#9c6bff', label: 'Epic Rock' },
+            area: { type: 'circle', color: '#6b4e71', label: 'Area' },
+            other: { type: 'circle', color: '#5a9a9a', label: 'Other' },
+            poi: { type: 'circle', color: '#4a90e2', label: 'Point of Interest' },
+            boss: { type: 'circle', color: '#c41e3a', label: 'World Boss' },
+            resource: { type: 'circle', color: '#d4a574', label: 'Resource Node' },
+            guild: { type: 'circle', color: '#8b4513', label: 'Guild Location' },
+            dungeon: { type: 'circle', color: '#6b4e71', label: 'Dungeon' }
         };
+
+        const legacyCategoryMap = {
+            legoTree: 'legendaryTree',
+            legoStone: 'legendaryRock',
+            epicTree: 'epicTree',
+            epicStone: 'epicRock'
+        };
+
+        function resolveCategoryKey(category) {
+            if (!category) return 'other';
+            if (categoryStyles[category]) return category;
+            return legacyCategoryMap[category] || 'other';
+        }
+
+        function getCategoryStyle(category) {
+            const key = resolveCategoryKey(category);
+            return { key, style: categoryStyles[key] || categoryStyles.other };
+        }
+
+        function getPinIconHTML(category) {
+            const { style } = getCategoryStyle(category);
+            const color = style.color || categoryStyles.other.color;
+
+            if (style.type === 'tree') {
+                return `
+                    <div class="pin-icon pin-icon-tree" style="--pin-color:${color}">
+                        <div class="pin-tree-canopy"></div>
+                        <div class="pin-tree-trunk"></div>
+                    </div>
+                `.trim();
+            }
+
+            if (style.type === 'rock') {
+                return `
+                    <div class="pin-icon pin-icon-rock" style="--pin-color:${color}">
+                        <div class="pin-rock-shape"></div>
+                        <div class="pin-rock-shine"></div>
+                    </div>
+                `.trim();
+            }
+
+            return `
+                <div class="pin-icon pin-icon-circle" style="--pin-color:${color}">
+                    <div class="pin-circle"></div>
+                </div>
+            `.trim();
+        }
+
+        function formatCategoryLabel(category) {
+            const { key, style } = getCategoryStyle(category);
+            return style.label || key;
+        }
+
+        function renderLegendIcons() {
+            document.querySelectorAll('[data-pin-icon]').forEach(el => {
+                el.innerHTML = getPinIconHTML(el.dataset.pinIcon);
+            });
+        }
 
         const pinModal = document.getElementById('pinModal');
         const pinTitleInput = document.getElementById('pinTitle');
@@ -761,20 +889,23 @@
         }
 
         function createPinIcon(category) {
-            const color = categoryColors[category] || categoryColors.other;
+            const iconHTML = getPinIconHTML(category);
             return L.divIcon({
                 className: 'custom-pin',
-                html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d4a574; box-shadow: 0 0 10px rgba(0, 0, 0, 0.8), 0 0 20px ${color}40;"></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
+                html: iconHTML,
+                iconSize: [30, 34],
+                iconAnchor: [15, 30],
+                popupAnchor: [0, -30]
             });
         }
 
         function normalizePin(pin) {
             const lat = Number(pin.lat);
             const lng = Number(pin.lng);
+            const { key } = getCategoryStyle(pin.category);
             return {
                 ...pin,
+                category: key,
                 lat: Number.isFinite(lat) ? lat : pin.lat,
                 lng: Number.isFinite(lng) ? lng : pin.lng
             };
@@ -803,6 +934,7 @@
             const isOwner = currentUser && pin.discord_user_id === currentUser.discord_id;
             const isAdmin = canCurrentUserAdmin();
             const deleteLabel = isAdmin && !isOwner ? 'Delete (Admin)' : 'Delete';
+            const categoryLabel = formatCategoryLabel(pin.category);
 
             const buttons = [];
             if (canEdit) {
@@ -819,7 +951,7 @@
                 <div style="color: #e0e0e0; font-family: 'Philosopher', sans-serif;">
                     <strong style="color: #d4a574; font-size: 15px;">${pin.title}</strong><br>
                     ${pin.description ? `${pin.description}<br>` : ''}
-                    <em style="font-size: 11px; color: #8b8b8b;">${pin.category}</em><br>
+                    <em style="font-size: 11px; color: #8b8b8b;">${categoryLabel}</em><br>
                     <div style="font-size: 10px; color: #666; margin-top: 4px;">Added by: ${pin.discord_username}</div>
                     ${actions}
                     ${moveHint}
@@ -998,6 +1130,7 @@
         }
 
         window.onload = function() {
+            renderLegendIcons();
             initMap();
         };
     </script>
