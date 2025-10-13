@@ -127,6 +127,42 @@
             background: linear-gradient(135deg, #e04545 0%, #a3232d 100%);
             box-shadow: 0 0 15px rgba(196, 30, 58, 0.5);
         }
+        .header-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            color: #8b8b8b;
+            font-size: 12px;
+            text-align: right;
+        }
+        .panel-toggle-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .panel-toggle {
+            padding: 6px 12px;
+            border: 1px solid #d4a574;
+            border-radius: 20px;
+            background: rgba(20, 20, 20, 0.7);
+            color: #d4a574;
+            font-size: 11px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            font-family: 'Cinzel', serif;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+        .panel-toggle:hover {
+            background: rgba(139, 69, 19, 0.3);
+            box-shadow: 0 0 10px rgba(139, 69, 19, 0.4);
+        }
+        .panel-hidden {
+            display: none !important;
+        }
         .filter-group {
             margin-top: 18px;
             border-top: 1px solid rgba(212, 165, 116, 0.3);
@@ -424,15 +460,19 @@
                 <div class="guild-title">OBSIDIAN EMPIRE</div>
                 <div class="subtitle">Interactive Map of Verra</div>
             </div>
-            <div style="text-align: right; color: #8b8b8b; font-size: 12px;">
+            <div class="header-actions">
                 <div>Phase 3 ~ Running in Ashes of Creation</div>
+                <div class="panel-toggle-group">
+                    <button class="panel-toggle" data-target="controlsPanel" data-label="Controls">Hide Controls</button>
+                    <button class="panel-toggle" data-target="legendPanel" data-label="Pin Categories">Hide Pin Categories</button>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="map"></div>
-    
-    <div class="controls">
+
+    <div class="controls" id="controlsPanel">
         <h3>Map Controls</h3>
         
         <div id="authSection">
@@ -464,7 +504,7 @@
         </div>
     </div>
 
-    <div class="legend">
+    <div class="legend" id="legendPanel">
         <h4>Pin Categories</h4>
         <div class="legend-item">
             <div class="legend-icon" data-pin-icon="legendaryTree"></div>
@@ -596,6 +636,27 @@
         function renderLegendIcons() {
             document.querySelectorAll('[data-pin-icon]').forEach(el => {
                 el.innerHTML = getPinIconHTML(el.dataset.pinIcon);
+            });
+        }
+
+        function initializePanelToggles() {
+            document.querySelectorAll('.panel-toggle').forEach(button => {
+                const targetId = button.dataset.target;
+                const label = button.dataset.label || 'Panel';
+                const panel = document.getElementById(targetId);
+                if (!panel) return;
+
+                const updateLabel = () => {
+                    const isVisible = !panel.classList.contains('panel-hidden');
+                    button.textContent = `${isVisible ? 'Hide' : 'Show'} ${label}`;
+                };
+
+                updateLabel();
+
+                button.addEventListener('click', () => {
+                    panel.classList.toggle('panel-hidden');
+                    updateLabel();
+                });
             });
         }
 
@@ -1311,6 +1372,7 @@
         }
 
         window.onload = function() {
+            initializePanelToggles();
             initializeCategoryFilters();
             renderLegendIcons();
             initMap();
