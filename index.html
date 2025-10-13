@@ -293,6 +293,57 @@
             background: rgba(255, 255, 255, 0.35);
             transform: rotate(15deg);
         }
+        .pin-icon-animal {
+            --pin-color: #c8a165;
+        }
+        .pin-icon-animal .pin-animal-pad {
+            position: relative;
+            width: 18px;
+            height: 16px;
+            border-radius: 60% 60% 55% 55%;
+            background: var(--pin-color);
+            box-shadow: inset -2px -2px 4px rgba(0, 0, 0, 0.3), 0 0 6px rgba(0, 0, 0, 0.4);
+        }
+        .pin-icon-animal .pin-animal-toe {
+            position: absolute;
+            width: 7px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--pin-color);
+            box-shadow: inset -1px -1px 2px rgba(0, 0, 0, 0.25);
+        }
+        .pin-icon-animal .pin-animal-toe:nth-child(2) { top: -6px; left: 2px; }
+        .pin-icon-animal .pin-animal-toe:nth-child(3) { top: -7px; left: 7px; }
+        .pin-icon-animal .pin-animal-toe:nth-child(4) { top: -7px; left: 12px; }
+        .pin-icon-animal .pin-animal-toe:nth-child(5) { top: -6px; left: 17px; }
+        .pin-icon-plant {
+            --pin-color: #9c6bff;
+        }
+        .pin-icon-plant .pin-plant-stem {
+            width: 5px;
+            height: 14px;
+            background: linear-gradient(180deg, #3a8c4a 0%, #225f2c 100%);
+            border-radius: 3px;
+        }
+        .pin-icon-plant .pin-plant-leaf {
+            position: absolute;
+            width: 16px;
+            height: 10px;
+            border-radius: 50% 50% 50% 0;
+            background: var(--pin-color);
+            box-shadow: inset -1px -1px 3px rgba(0, 0, 0, 0.2);
+            transform-origin: left center;
+        }
+        .pin-icon-plant .pin-plant-leaf:nth-child(2) {
+            top: -6px;
+            left: 8px;
+            transform: rotate(25deg);
+        }
+        .pin-icon-plant .pin-plant-leaf:nth-child(3) {
+            top: 2px;
+            left: 8px;
+            transform: rotate(-20deg) scaleX(-1);
+        }
         .pin-icon-circle .pin-circle {
             width: 20px;
             height: 20px;
@@ -515,12 +566,24 @@
             <span>Epic Tree</span>
         </div>
         <div class="legend-item">
+            <div class="legend-icon" data-pin-icon="legendaryPlant"></div>
+            <span>Legendary Plant</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon" data-pin-icon="epicPlant"></div>
+            <span>Epic Plant</span>
+        </div>
+        <div class="legend-item">
             <div class="legend-icon" data-pin-icon="legendaryRock"></div>
             <span>Legendary Rock</span>
         </div>
         <div class="legend-item">
             <div class="legend-icon" data-pin-icon="epicRock"></div>
             <span>Epic Rock</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon" data-pin-icon="animal"></div>
+            <span>Animal</span>
         </div>
         <div class="legend-item">
             <div class="legend-icon" data-pin-icon="area"></div>
@@ -545,6 +608,9 @@
                 <option value="epicTree">Epic Tree</option>
                 <option value="legendaryRock">Legendary Rock</option>
                 <option value="epicRock">Epic Rock</option>
+                <option value="legendaryPlant">Legendary Plant</option>
+                <option value="epicPlant">Epic Plant</option>
+                <option value="animal">Animal</option>
                 <option value="area">Area</option>
                 <option value="other">Other</option>
             </select>
@@ -570,8 +636,11 @@
         const categoryStyles = {
             legendaryTree: { type: 'tree', color: '#d4af37', label: 'Legendary Tree' },
             epicTree: { type: 'tree', color: '#9c6bff', label: 'Epic Tree' },
+            legendaryPlant: { type: 'plant', color: '#d4af37', label: 'Legendary Plant' },
+            epicPlant: { type: 'plant', color: '#9c6bff', label: 'Epic Plant' },
             legendaryRock: { type: 'rock', color: '#d4af37', label: 'Legendary Rock' },
             epicRock: { type: 'rock', color: '#9c6bff', label: 'Epic Rock' },
+            animal: { type: 'animal', color: '#c8a165', label: 'Animal' },
             area: { type: 'circle', color: '#6b4e71', label: 'Area' },
             other: { type: 'circle', color: '#5a9a9a', label: 'Other' },
             poi: { type: 'circle', color: '#4a90e2', label: 'Point of Interest' },
@@ -617,6 +686,28 @@
                     <div class="pin-icon pin-icon-rock" style="--pin-color:${color}">
                         <div class="pin-rock-shape"></div>
                         <div class="pin-rock-shine"></div>
+                    </div>
+                `.trim();
+            }
+
+            if (style.type === 'plant') {
+                return `
+                    <div class="pin-icon pin-icon-plant" style="--pin-color:${color}">
+                        <div class="pin-plant-stem"></div>
+                        <div class="pin-plant-leaf"></div>
+                        <div class="pin-plant-leaf"></div>
+                    </div>
+                `.trim();
+            }
+
+            if (style.type === 'animal') {
+                return `
+                    <div class="pin-icon pin-icon-animal" style="--pin-color:${color}">
+                        <div class="pin-animal-pad"></div>
+                        <div class="pin-animal-toe"></div>
+                        <div class="pin-animal-toe"></div>
+                        <div class="pin-animal-toe"></div>
+                        <div class="pin-animal-toe"></div>
                     </div>
                 `.trim();
             }
@@ -783,8 +874,11 @@
         const displayCategoryOrder = [
             'legendaryTree',
             'epicTree',
+            'legendaryPlant',
+            'epicPlant',
             'legendaryRock',
             'epicRock',
+            'animal',
             'area',
             'other'
         ];
