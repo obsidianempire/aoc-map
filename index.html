@@ -127,6 +127,39 @@
             background: linear-gradient(135deg, #e04545 0%, #a3232d 100%);
             box-shadow: 0 0 15px rgba(196, 30, 58, 0.5);
         }
+        .filter-group {
+            margin-top: 18px;
+            border-top: 1px solid rgba(212, 165, 116, 0.3);
+            padding-top: 14px;
+        }
+        .filter-group h4 {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            color: #d4a574;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .filter-item input {
+            margin-right: 10px;
+            accent-color: #d4a574;
+            cursor: pointer;
+        }
+        .filter-item span {
+            color: #e0e0e0;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
         .user-info {
             text-align: center;
             margin-bottom: 15px;
@@ -420,6 +453,15 @@
         <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
         <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
         <div id="addModeStatus">Click mode: View Only (Login Required)</div>
+
+        <div class="filter-group">
+            <h4>Show Categories</h4>
+            <div id="categoryFilters"></div>
+            <div class="filter-actions">
+                <button class="btn btn-secondary" id="filterSelectAllBtn" disabled>Select All</button>
+                <button class="btn btn-secondary" id="filterClearBtn" disabled>Clear</button>
+            </div>
+        </div>
     </div>
 
     <div class="legend">
@@ -557,12 +599,136 @@
             });
         }
 
+        function initializeCategoryFilters() {
+            activeCategoryKeys = new Set(allCategoryKeys);
+            renderCategoryFilterOptions();
+            updateFilterButtons();
+        }
+
+        function renderCategoryFilterOptions() {
+            if (!categoryFiltersContainer) {
+                return;
+            }
+
+            categoryFiltersContainer.innerHTML = '';
+            displayCategoryOrder.forEach(key => {
+                const { style } = getCategoryStyle(key);
+                const optionId = `filter-${key}`;
+
+                const label = document.createElement('label');
+                label.className = 'filter-item';
+                label.htmlFor = optionId;
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = optionId;
+                checkbox.value = key;
+                checkbox.checked = activeCategoryKeys.has(key);
+                checkbox.addEventListener('change', handleCategoryFilterChange);
+
+                const iconHolder = document.createElement('div');
+                iconHolder.className = 'legend-icon';
+                iconHolder.innerHTML = getPinIconHTML(key);
+
+                const text = document.createElement('span');
+                text.textContent = style.label || key;
+
+                label.appendChild(checkbox);
+                label.appendChild(iconHolder);
+                label.appendChild(text);
+
+                categoryFiltersContainer.appendChild(label);
+            });
+
+            if (filterSelectAllBtn) {
+                filterSelectAllBtn.disabled = false;
+                filterSelectAllBtn.addEventListener('click', selectAllFilters);
+            }
+            if (filterClearBtn) {
+                filterClearBtn.disabled = false;
+                filterClearBtn.addEventListener('click', clearFilters);
+            }
+        }
+
+        function handleCategoryFilterChange(event) {
+            const key = event.target.value;
+            if (!key) return;
+
+            if (event.target.checked) {
+                activeCategoryKeys.add(key);
+            } else {
+                activeCategoryKeys.delete(key);
+            }
+
+            updateFilterButtons();
+            applyCategoryFilters();
+        }
+
+        function selectAllFilters(event) {
+            event.preventDefault();
+            activeCategoryKeys = new Set(allCategoryKeys);
+            syncFilterInputs();
+            updateFilterButtons();
+            applyCategoryFilters();
+        }
+
+        function clearFilters(event) {
+            event.preventDefault();
+            activeCategoryKeys = new Set();
+            syncFilterInputs();
+            updateFilterButtons();
+            applyCategoryFilters();
+        }
+
+        function syncFilterInputs() {
+            if (!categoryFiltersContainer) return;
+            categoryFiltersContainer.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                input.checked = activeCategoryKeys.has(input.value);
+            });
+        }
+
+        function updateFilterButtons() {
+            if (!filterSelectAllBtn || !filterClearBtn) return;
+            const totalVisible = displayCategoryOrder.length;
+            const selectedVisible = displayCategoryOrder.filter(key => activeCategoryKeys.has(key)).length;
+            filterSelectAllBtn.disabled = selectedVisible === totalVisible;
+            filterClearBtn.disabled = selectedVisible === 0;
+        }
+
+        function shouldPinBeVisible(pin) {
+            if (!pin) return false;
+            const key = resolveCategoryKey(pin.category);
+            if (displayCategoryOrder.includes(key)) {
+                return activeCategoryKeys.has(key);
+            }
+            // For categories without explicit checkbox, follow current selection:
+            // If user cleared everything, hide; otherwise default to visible.
+            return activeCategoryKeys.size === 0 ? false : true;
+        }
+
+        function applyCategoryFilters() {
+            Object.values(pinsById).forEach(pin => updateMarkerVisibility(pin));
+        }
+
         const pinModal = document.getElementById('pinModal');
         const pinTitleInput = document.getElementById('pinTitle');
         const pinDescriptionInput = document.getElementById('pinDescription');
         const pinCategorySelect = document.getElementById('pinCategory');
         const pinSubmitButton = document.getElementById('pinSubmitButton');
         const pinModalTitle = document.querySelector('#pinModal h3');
+        const categoryFiltersContainer = document.getElementById('categoryFilters');
+        const filterSelectAllBtn = document.getElementById('filterSelectAllBtn');
+        const filterClearBtn = document.getElementById('filterClearBtn');
+        const displayCategoryOrder = [
+            'legendaryTree',
+            'epicTree',
+            'legendaryRock',
+            'epicRock',
+            'area',
+            'other'
+        ];
+        const allCategoryKeys = Array.from(new Set(Object.keys(categoryStyles)));
+        let activeCategoryKeys = new Set();
 
         // Initialize map using a single high-resolution image
         function initMap() {
@@ -829,6 +995,7 @@
                     pinsById = {};
                     pins.forEach(pin => addMarkerToMap(pin));
                     refreshMarkerPermissions();
+                    applyCategoryFilters();
                     showStatus(`Loaded ${pins.length} pins`);
                 } else {
                     showStatus('Error loading pins', true);
@@ -853,6 +1020,7 @@
                 marker.dragging.disable();
             }
             markers[normalized.id] = marker;
+            updateMarkerVisibility(normalized);
         }
 
         async function deletePin(pinId) {
@@ -897,6 +1065,18 @@
                 iconAnchor: [15, 30],
                 popupAnchor: [0, -30]
             });
+        }
+
+        function updateMarkerVisibility(pin) {
+            const marker = markers[pin.id];
+            if (!marker) return;
+            const visible = shouldPinBeVisible(pin);
+            const isShown = map.hasLayer(marker);
+            if (visible && !isShown) {
+                marker.addTo(map);
+            } else if (!visible && isShown) {
+                map.removeLayer(marker);
+            }
         }
 
         function normalizePin(pin) {
@@ -1050,6 +1230,7 @@
                     }
                 }
             }
+            updateMarkerVisibility(normalized);
         }
 
         async function handleMarkerDrag(event) {
@@ -1130,6 +1311,7 @@
         }
 
         window.onload = function() {
+            initializeCategoryFilters();
             renderLegendIcons();
             initMap();
         };
