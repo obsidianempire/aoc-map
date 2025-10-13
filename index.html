@@ -332,23 +332,23 @@
         <h4>Pin Categories</h4>
         <div class="legend-item">
             <div class="legend-color" style="background: #c41e3a;"></div>
-            <span>World Boss</span>
+            <span>Legondary Tree</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #d4a574;"></div>
-            <span>Resource Node</span>
+            <span>Legondary Stone</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #4a90e2;"></div>
-            <span>POI</span>
+            <span>Epic Tree</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #8b4513;"></div>
-            <span>Guild Location</span>
+            <span>Epic Stone</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #6b4e71;"></div>
-            <span>Dungeon</span>
+            <span>Area</span>
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #5a9a9a;"></div>
@@ -365,11 +365,11 @@
             <input type="text" id="pinTitle" placeholder="Pin Title" maxlength="50">
             <textarea id="pinDescription" placeholder="Description (optional)"></textarea>
             <select id="pinCategory">
-                <option value="boss">World Boss</option>
-                <option value="resource">Resource Node</option>
-                <option value="poi">POI</option>
-                <option value="guild">Guild Location</option>
-                <option value="dungeon">Dungeon</option>
+                <option value="legoTree">Legondary Tree</option>
+                <option value="legoStone">Legondary Stone</option>
+                <option value="epicTree">Epic Tree</option>
+                <option value="epicStone">Epic Stone</option>
+                <option value="area">Area</option>
                 <option value="other">Other</option>
             </select>
             <div class="modal-buttons">
@@ -391,95 +391,32 @@
         const API_URL = window.location.origin;
 
         const categoryColors = {
-            boss: '#c41e3a',
-            resource: '#d4a574',
-            poi: '#4a90e2',
-            guild: '#8b4513',
-            dungeon: '#6b4e71',
+            legoTree: '#c41e3a',
+            legoStone: '#d4a574',
+            epicTree: '#4a90e2',
+            epicStone: '#8b4513',
+            area: '#6b4e71',
             other: '#5a9a9a'
         };
 
-        // Initialize map with tiles
-        async function initMap() {
-            const TILE_SIZE = 512;
-            
-            // Fetch tile metadata from server
-            let meta;
-            try {
-                console.log('Fetching tile metadata...');
-                const res = await fetch('/tile-metadata');
-                meta = await res.json();
-                console.log('Tile metadata:', meta);
-            } catch (e) {
-                console.error('Failed to fetch tile metadata:', e);
-                showStatus('Error loading map metadata', true);
-                return;
-            }
+        // Initialize map using a single high-resolution image
+        function initMap() {
+            const imageUrl = '/AshesMapVerra.jpg';
+            const imageWidth = 4000;
+            const imageHeight = 2824;
+            const bounds = [[0, 0], [imageHeight, imageWidth]];
 
-            const MIN_ZOOM = meta.min_z || 1;
-            const MAX_ZOOM = meta.max_z || 8;
-            
-            // Get extents at max zoom to calculate map size
-            const maxZoomExtent = meta.by_z[String(MAX_ZOOM)];
-            if (!maxZoomExtent) {
-                console.error('No tile extent data for max zoom');
-                showStatus('Error: No tiles found', true);
-                return;
-            }
-
-            const tilesAcross = maxZoomExtent.x_max - maxZoomExtent.x_min + 1;
-            const tilesDown = maxZoomExtent.y_max - maxZoomExtent.y_min + 1;
-            const mapWidth = tilesAcross * TILE_SIZE;
-            const mapHeight = tilesDown * TILE_SIZE;
-            const bounds = [[0, 0], [mapHeight, mapWidth]];
-            
-            console.log('Map dimensions:', { 
-                MIN_ZOOM, 
-                MAX_ZOOM, 
-                tilesAcross, 
-                tilesDown, 
-                mapWidth, 
-                mapHeight,
-                bounds
-            });
-            
             map = L.map('map', {
                 crs: L.CRS.Simple,
-                minZoom: MIN_ZOOM,
-                maxZoom: MAX_ZOOM,
+                minZoom: -2,
+                maxZoom: 6,
                 zoomControl: true
             });
-            
-            // Create tile layer
-            L.tileLayer('/tiles/{z}/{x}/{y}.webp', {
-                tileSize: TILE_SIZE,
-                minZoom: MIN_ZOOM,
-                maxZoom: MAX_ZOOM,
-                noWrap: true,
-                bounds: bounds,
-                errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
-                attribution: ''
-            }).addTo(map);
 
-            // Set bounds and initial view
-            map.setMaxBounds(bounds);
+            L.imageOverlay(imageUrl, bounds).addTo(map);
             map.fitBounds(bounds);
-            map.setView([mapHeight/2, mapWidth/2], MIN_ZOOM);
+            map.setMaxBounds(bounds);
 
-            // Debug tile loading
-            map.on('tileloadstart', function(e) {
-                console.log('Loading tile:', e.url);
-            });
-            
-            map.on('tileerror', function(e) {
-                console.error('Tile error:', e.tile.src);
-            });
-
-            map.on('tileload', function(e) {
-                console.log('Tile loaded successfully:', e.tile.src);
-            });
-
-            // Click handler for adding pins
             map.on('click', function(e) {
                 if (addPinMode && authToken) {
                     tempLatLng = e.latlng;
