@@ -15,6 +15,12 @@
             padding: 0;
             box-sizing: border-box;
         }
+        :root {
+            --description-panel-height: 120px;
+        }
+        html, body {
+            height: 100%;
+        }
         body {
             font-family: 'Philosopher', sans-serif;
             background: #0a0a0a;
@@ -22,9 +28,11 @@
             overflow: hidden;
         }
         #map {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: calc(100vh - var(--description-panel-height));
+            min-height: 320px;
             background: #0a0a0a;
+            position: relative;
         }
         
         .header {
@@ -339,6 +347,49 @@
             box-shadow: 0 0 6px rgba(139, 69, 19, 0.4);
             margin-right: 4px;
         }
+        #descriptionPanel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: var(--description-panel-height);
+            background: linear-gradient(180deg, rgba(20, 20, 20, 0.96) 0%, rgba(10, 10, 10, 0.98) 100%);
+            border-top: 2px solid #8b4513;
+            box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.6);
+            z-index: 900;
+            display: flex;
+            align-items: center;
+        }
+        .description-content {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 18px 28px;
+        }
+        .description-title {
+            font-family: 'Cinzel', serif;
+            letter-spacing: 1px;
+            font-size: 20px;
+            color: #d4a574;
+            margin-bottom: 8px;
+        }
+        .description-text {
+            font-size: 17px;
+            line-height: 1.55;
+            color: #f4e6d0;
+            white-space: normal;
+        }
+        @media (max-width: 768px) {
+            :root {
+                --description-panel-height: 140px;
+            }
+            .description-title {
+                font-size: 18px;
+            }
+            .description-text {
+                font-size: 15px;
+            }
+        }
         .user-info {
             text-align: center;
             margin-bottom: 15px;
@@ -363,7 +414,7 @@
         }
         .status {
             position: absolute;
-            bottom: 20px;
+            bottom: calc(20px + var(--description-panel-height));
             right: 20px;
             z-index: 1000;
             background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
@@ -524,7 +575,7 @@
         
         .legend {
             position: absolute;
-            bottom: 20px;
+            bottom: calc(20px + var(--description-panel-height));
             left: 20px;
             z-index: 1000;
             background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(10, 10, 10, 0.95) 100%);
@@ -755,6 +806,13 @@
         <div class="legend-item">
             <div class="legend-icon" data-pin-icon="other"></div>
             <span>Other</span>
+        </div>
+    </div>
+
+    <div id="descriptionPanel">
+        <div class="description-content">
+            <div class="description-title" id="descriptionTitle">Hover for details</div>
+            <div class="description-text" id="descriptionText">Move your cursor over a map pin or path to see its description.</div>
         </div>
     </div>
 
@@ -1087,6 +1145,9 @@
         const pathNameInput = document.getElementById('pathName');
         const pathDescriptionInput = document.getElementById('pathDescription');
         const pathColorInput = document.getElementById('pathColor');
+        const descriptionPanel = document.getElementById('descriptionPanel');
+        const descriptionTitleEl = document.getElementById('descriptionTitle');
+        const descriptionTextEl = document.getElementById('descriptionText');
         const displayCategoryOrder = [
             'legendaryTree',
             'epicTree',
@@ -1100,6 +1161,12 @@
         ];
         const allCategoryKeys = Array.from(new Set(Object.keys(categoryStyles)));
         let activeCategoryKeys = new Set();
+        const DEFAULT_DESCRIPTION = {
+            title: 'Hover for details',
+            lines: ['Move your cursor over a map pin or path to see its description.']
+        };
+        const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        let activeDescriptionSource = null;
         let pathsById = {};
         let pathLayersById = {};
         let pathVisibilityMap = {};
@@ -1126,6 +1193,66 @@ let pathDrawHandler = null;
                 return DEFAULT_PATH_COLOR;
             }
             return upper;
+        }
+
+        function escapeHTML(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char]);
+        }
+
+        function setDescriptionPanelContent(title, lines) {
+            if (!descriptionTitleEl || !descriptionTextEl) return;
+            descriptionTitleEl.textContent = title;
+            const safeLines = Array.isArray(lines) && lines.length ? lines : [''];
+            descriptionTextEl.innerHTML = safeLines.map(escapeHTML).join('<br>');
+        }
+
+        function showDescriptionPanel(title, lines, source) {
+            activeDescriptionSource = source;
+            setDescriptionPanelContent(title, lines);
+        }
+
+        function showPinDescription(pin, source) {
+            const current = pinsById[pin.id] || pin;
+            const lines = [];
+            if (current.description) {
+                lines.push(current.description);
+            } else {
+                lines.push('No description provided.');
+            }
+            lines.push(`Category: ${formatCategoryLabel(current.category)}`);
+            if (current.discord_username) {
+                lines.push(`Added by: ${current.discord_username}`);
+            }
+            if (typeof current.lat === 'number' && typeof current.lng === 'number') {
+                lines.push(`Location: ${current.lat.toFixed(3)}, ${current.lng.toFixed(3)}`);
+            }
+            showDescriptionPanel(current.title || 'Pin', lines, source);
+        }
+
+        function showPathDescription(path, source) {
+            const current = pathsById[path.id] || path;
+            const lines = [];
+            if (current.description) {
+                lines.push(current.description);
+            } else {
+                lines.push('No description provided.');
+            }
+            const color = sanitizeColor(current.color);
+            lines.push(`Color: ${color}`);
+            const segmentCount = current.lines ? current.lines.length : 0;
+            lines.push(`Segments: ${segmentCount}`);
+            if (current.discord_username) {
+                lines.push(`Created by: ${current.discord_username}`);
+            }
+            showDescriptionPanel(current.name || 'Path', lines, source);
+        }
+
+        function clearDescriptionPanel(source) {
+            if (source && source !== activeDescriptionSource) {
+                return;
+            }
+            activeDescriptionSource = null;
+            setDescriptionPanelContent(DEFAULT_DESCRIPTION.title, DEFAULT_DESCRIPTION.lines);
         }
 
         function normalizePath(path) {
@@ -1191,6 +1318,19 @@ let pathDrawHandler = null;
 
             pathLayersById[normalized.id] = group;
 
+            const sourceKey = `path-${normalized.id}`;
+            const handleMouseOver = () => {
+                const current = pathsById[normalized.id] || normalized;
+                showPathDescription(current, sourceKey);
+            };
+            group.on('mouseover', handleMouseOver);
+            group.on('mouseout', () => clearDescriptionPanel(sourceKey));
+            group.on('remove', () => clearDescriptionPanel(sourceKey));
+
+            if (activeDescriptionSource === sourceKey) {
+                showPathDescription(normalized, sourceKey);
+            }
+
             if (pathsVisible && (pathVisibilityMap[normalized.id] ?? true)) {
                 group.addTo(map);
             }
@@ -1205,6 +1345,9 @@ let pathDrawHandler = null;
             }
             delete pathsById[key];
             delete pathVisibilityMap[key];
+            if (activeDescriptionSource === `path-${key}`) {
+                clearDescriptionPanel();
+            }
         }
 
         function updatePathToggleButton() {
@@ -1263,6 +1406,7 @@ let pathDrawHandler = null;
                 pathsListContainer.appendChild(empty);
                 updatePathToggleButton();
                 updatePathControls();
+                clearDescriptionPanel();
                 return;
             }
 
@@ -1340,6 +1484,9 @@ let pathDrawHandler = null;
         function toggleAllPaths() {
             pathsVisible = !pathsVisible;
             applyPathVisibility();
+            if (!pathsVisible && activeDescriptionSource && activeDescriptionSource.startsWith('path-')) {
+                clearDescriptionPanel(activeDescriptionSource);
+            }
             showStatus(pathsVisible ? 'Paths shown' : 'Paths hidden');
         }
 
@@ -1488,6 +1635,10 @@ let pathDrawHandler = null;
                     tempPathLines = [];
                     drawingPath = false;
                     if (pathDrawingActions) pathDrawingActions.style.display = 'none';
+                    tempPathColor = DEFAULT_PATH_COLOR;
+                    if (pathColorInput) {
+                        pathColorInput.value = DEFAULT_PATH_COLOR;
+                    }
                     addPathLayer(newPath);
                     pathVisibilityMap[String(newPath.id)] = true;
                     applyPathVisibility();
@@ -1650,6 +1801,7 @@ let pathDrawHandler = null;
                 document.getElementById('addModeStatus').textContent = 'Click mode: View Only (Login Required)';
                 document.getElementById('addModeStatus').style.color = '#8b8b8b';
                 resetPathDrawingState();
+                clearDescriptionPanel();
             }
             refreshMarkerPermissions();
             updatePathControls();
@@ -1872,6 +2024,15 @@ let pathDrawHandler = null;
             }
             markers[normalized.id] = marker;
             updateMarkerVisibility(normalized);
+
+            const sourceKey = `pin-${normalized.id}`;
+            const handleMouseOver = () => {
+                const current = pinsById[normalized.id] || normalized;
+                showPinDescription(current, sourceKey);
+            };
+            marker.on('mouseover', handleMouseOver);
+            marker.on('mouseout', () => clearDescriptionPanel(sourceKey));
+            marker.on('remove', () => clearDescriptionPanel(sourceKey));
         }
 
         async function deletePin(pinId) {
@@ -1896,6 +2057,9 @@ let pathDrawHandler = null;
                         delete markers[pinId];
                     }
                     delete pinsById[pinId];
+                    if (activeDescriptionSource === `pin-${pinId}`) {
+                        clearDescriptionPanel();
+                    }
                     showStatus('Pin deleted successfully');
                 } else {
                     const error = await response.json();
@@ -2082,6 +2246,9 @@ let pathDrawHandler = null;
                 }
             }
             updateMarkerVisibility(normalized);
+            if (activeDescriptionSource === `pin-${normalized.id}`) {
+                showPinDescription(normalized, `pin-${normalized.id}`);
+            }
         }
 
         async function handleMarkerDrag(event) {
@@ -2138,6 +2305,7 @@ let pathDrawHandler = null;
                     Object.values(markers).forEach(marker => map.removeLayer(marker));
                     markers = {};
                     pinsById = {};
+                    clearDescriptionPanel();
                     showStatus('All pins deleted');
                     loadPins();
                 } else {
@@ -2192,6 +2360,7 @@ let pathDrawHandler = null;
             initializeCategoryFilters();
             renderLegendIcons();
             updatePathControls();
+            clearDescriptionPanel();
             initMap();
         };
     </script>
