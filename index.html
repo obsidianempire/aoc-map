@@ -164,6 +164,40 @@
         .panel-hidden {
             display: none !important;
         }
+        .tab-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 18px;
+        }
+        .tab-button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #8b4513;
+            background: rgba(20, 20, 20, 0.7);
+            color: #d4a574;
+            font-family: 'Cinzel', serif;
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(139, 69, 19, 0.4);
+        }
+        .tab-content {
+            display: none;
+            margin-top: 16px;
+            max-height: 360px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .tab-content.active {
+            display: block;
+        }
         .filter-group {
             margin-top: 18px;
             border-top: 1px solid rgba(212, 165, 116, 0.3);
@@ -197,6 +231,11 @@
             gap: 8px;
             margin-top: 12px;
         }
+        #categoryFilters {
+            max-height: 220px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
         .paths-group {
             margin-top: 18px;
             border-top: 1px solid rgba(212, 165, 116, 0.3);
@@ -214,6 +253,7 @@
             margin-top: 12px;
             max-height: 220px;
             overflow-y: auto;
+            padding-right: 4px;
         }
         .path-item {
             display: flex;
@@ -615,28 +655,37 @@
             </div>
         </div>
         
-        <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
-        <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
-        <div id="addModeStatus">Click mode: View Only (Login Required)</div>
+        <div class="tab-buttons">
+            <button class="tab-button active" data-tab="pinsTab">Pins</button>
+            <button class="tab-button" data-tab="pathsTab">Paths</button>
+        </div>
 
-        <div class="filter-group">
-            <h4>Show Categories</h4>
-            <div id="categoryFilters"></div>
-            <div class="filter-actions">
-                <button class="btn btn-secondary" id="filterSelectAllBtn" disabled>Select All</button>
-                <button class="btn btn-secondary" id="filterClearBtn" disabled>Clear</button>
+        <div class="tab-content active" id="pinsTab">
+            <button class="btn btn-primary" onclick="loadPins()">Load Pins</button>
+            <button class="btn btn-secondary" onclick="toggleAddMode()" id="toggleAddBtn" disabled>Toggle Add Pin Mode</button>
+            <div id="addModeStatus">Click mode: View Only (Login Required)</div>
+
+            <div class="filter-group">
+                <h4>Show Categories</h4>
+                <div id="categoryFilters"></div>
+                <div class="filter-actions">
+                    <button class="btn btn-secondary" id="filterSelectAllBtn" disabled>Select All</button>
+                    <button class="btn btn-secondary" id="filterClearBtn" disabled>Clear</button>
+                </div>
             </div>
         </div>
 
-        <div class="paths-group">
-            <h4>Paths</h4>
-            <button class="btn btn-secondary" id="togglePathsBtn">Hide All Paths</button>
-            <button class="btn btn-primary" id="startPathBtn" disabled style="margin-top: 10px;">Start New Path</button>
-            <div class="filter-actions" id="pathDrawingActions" style="display: none;">
-                <button class="btn btn-secondary" id="finishPathBtn">Save Path</button>
-                <button class="btn btn-secondary" id="cancelPathBtn">Cancel</button>
+        <div class="tab-content" id="pathsTab">
+            <div class="paths-group">
+                <h4>Paths</h4>
+                <button class="btn btn-secondary" id="togglePathsBtn">Hide All Paths</button>
+                <button class="btn btn-primary" id="startPathBtn" disabled style="margin-top: 10px;">Start New Path</button>
+                <div class="filter-actions" id="pathDrawingActions" style="display: none;">
+                    <button class="btn btn-secondary" id="finishPathBtn">Save Path</button>
+                    <button class="btn btn-secondary" id="cancelPathBtn">Cancel</button>
+                </div>
+                <div class="paths-list" id="pathsList"></div>
             </div>
-            <div class="paths-list" id="pathsList"></div>
         </div>
     </div>
 
@@ -848,6 +897,31 @@
                     updateLabel();
                 });
             });
+        }
+
+        function initializeControlTabs() {
+            const buttons = Array.from(document.querySelectorAll('.tab-button'));
+            const contents = Array.from(document.querySelectorAll('.tab-content'));
+            if (!buttons.length || !contents.length) {
+                return;
+            }
+
+            const activate = (targetId) => {
+                buttons.forEach(button => {
+                    const isActive = button.dataset.tab === targetId;
+                    button.classList.toggle('active', isActive);
+                });
+                contents.forEach(content => {
+                    content.classList.toggle('active', content.id === targetId);
+                });
+            };
+
+            buttons.forEach(button => {
+                button.addEventListener('click', () => activate(button.dataset.tab));
+            });
+
+            const initial = (buttons.find(btn => btn.classList.contains('active')) || buttons[0]).dataset.tab;
+            activate(initial);
         }
 
         function initializeCategoryFilters() {
@@ -2019,8 +2093,10 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
 
         window.onload = function() {
             initializePanelToggles();
+            initializeControlTabs();
             initializeCategoryFilters();
             renderLegendIcons();
+            updatePathControls();
             initMap();
         };
     </script>
