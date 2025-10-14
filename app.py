@@ -6,6 +6,7 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 import json
+from psycopg import sql
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-this-in-production')
@@ -86,7 +87,11 @@ def init_db():
             cursor.execute("UPDATE paths SET color = %s WHERE color IS NULL", (DEFAULT_PATH_COLOR,))
             cursor.execute("UPDATE paths SET color = %s WHERE color = ''", (DEFAULT_PATH_COLOR,))
             cursor.execute("UPDATE paths SET color = UPPER(color) WHERE color <> UPPER(color)")
-            cursor.execute("ALTER TABLE paths ALTER COLUMN color SET DEFAULT %s::text", (DEFAULT_PATH_COLOR,))
+            cursor.execute(
+                sql.SQL("ALTER TABLE paths ALTER COLUMN color SET DEFAULT {}").format(
+                    sql.Literal(DEFAULT_PATH_COLOR)
+                )
+            )
             cursor.execute("ALTER TABLE paths ALTER COLUMN color SET NOT NULL")
         db.commit()
         db.close()
