@@ -310,6 +310,35 @@
             font-size: 11px;
             color: #8b8b8b;
         }
+        .path-color-picker {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        .path-color-picker label {
+            font-size: 13px;
+            color: #d4a574;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .path-color-picker input[type="color"] {
+            width: 48px;
+            height: 32px;
+            border: 1px solid #8b4513;
+            border-radius: 6px;
+            background: #1a1a1a;
+            cursor: pointer;
+        }
+        .path-color-swatch {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid #d4a574;
+            box-shadow: 0 0 6px rgba(139, 69, 19, 0.4);
+            margin-right: 4px;
+        }
         .user-info {
             text-align: center;
             margin-bottom: 15px;
@@ -761,6 +790,10 @@
             <h3>Save Path</h3>
             <input type="text" id="pathName" placeholder="Path Name" maxlength="80">
             <textarea id="pathDescription" placeholder="Description (optional)"></textarea>
+            <div class="path-color-picker">
+                <label for="pathColor">Line Color</label>
+                <input type="color" id="pathColor" value="#D4A574">
+            </div>
             <div class="modal-buttons">
                 <button class="btn btn-primary" onclick="submitPath()">Save Path</button>
                 <button class="btn btn-secondary" onclick="cancelPathSave()">Cancel</button>
@@ -1053,6 +1086,7 @@
         const pathModal = document.getElementById('pathModal');
         const pathNameInput = document.getElementById('pathName');
         const pathDescriptionInput = document.getElementById('pathDescription');
+        const pathColorInput = document.getElementById('pathColor');
         const displayCategoryOrder = [
             'legendaryTree',
             'epicTree',
@@ -1072,10 +1106,27 @@
         let pathsVisible = true;
         let drawingPath = false;
         let tempPathLines = [];
+let tempPathColor = '#D4A574';
 let tempPathLayers = [];
 let pathDrawHandler = null;
-const PATH_STYLE = { color: '#d4a574', weight: 4, opacity: 0.75, lineJoin: 'round', lineCap: 'round' };
-const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArray: '6 4', lineJoin: 'round', lineCap: 'round' };
+        const DEFAULT_PATH_COLOR = '#D4A574';
+        const PATH_STYLE = (color = DEFAULT_PATH_COLOR) => ({ color, weight: 4, opacity: 0.75, lineJoin: 'round', lineCap: 'round' });
+        const PATH_PREVIEW_STYLE = (color = DEFAULT_PATH_COLOR) => ({ color, weight: 4, opacity: 0.9, dashArray: '6 4', lineJoin: 'round', lineCap: 'round' });
+
+        function sanitizeColor(value) {
+            if (typeof value !== 'string') {
+                return DEFAULT_PATH_COLOR;
+            }
+            const trimmed = value.trim();
+            if (!trimmed) {
+                return DEFAULT_PATH_COLOR;
+            }
+            const upper = trimmed.toUpperCase();
+            if (!upper.startsWith('#') || (upper.length !== 4 && upper.length !== 7)) {
+                return DEFAULT_PATH_COLOR;
+            }
+            return upper;
+        }
 
         function normalizePath(path) {
             let rawLines = path.lines;
@@ -1113,13 +1164,17 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             return {
                 ...path,
                 id: String(path.id),
-                lines: normalizedLines
+                lines: normalizedLines,
+                color: sanitizeColor(path.color)
             };
         }
 
         function addPathLayer(path) {
             const normalized = normalizePath(path);
             pathsById[normalized.id] = normalized;
+            if (pathVisibilityMap[normalized.id] === undefined) {
+                pathVisibilityMap[normalized.id] = true;
+            }
 
             const existingGroup = pathLayersById[normalized.id];
             if (existingGroup) {
@@ -1127,9 +1182,11 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             }
 
             const group = L.featureGroup();
+            const color = sanitizeColor(normalized.color);
+            normalized.color = color;
             normalized.lines.forEach(line => {
                 const latlngs = line.map(point => [point.lat, point.lng]);
-                L.polyline(latlngs, PATH_STYLE).addTo(group);
+                L.polyline(latlngs, PATH_STYLE(color)).addTo(group);
             });
 
             pathLayersById[normalized.id] = group;
@@ -1205,6 +1262,7 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                 empty.textContent = authToken ? 'No paths yet. Draw a new path to get started.' : 'No paths available.';
                 pathsListContainer.appendChild(empty);
                 updatePathToggleButton();
+                updatePathControls();
                 return;
             }
 
@@ -1222,6 +1280,12 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                     applyPathVisibility();
                 });
 
+                const colorValue = sanitizeColor(path.color);
+                const colorSwatch = document.createElement('span');
+                colorSwatch.className = 'path-color-swatch';
+                colorSwatch.style.background = colorValue;
+                colorSwatch.title = colorValue.toUpperCase();
+
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'path-name';
                 nameSpan.textContent = path.name;
@@ -1230,13 +1294,15 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                 }
 
                 label.appendChild(checkbox);
+                label.appendChild(colorSwatch);
                 label.appendChild(nameSpan);
 
                 const meta = document.createElement('span');
                 meta.className = 'path-meta';
                 const lineCount = path.lines ? path.lines.length : 0;
                 const owner = path.discord_username || 'Unknown';
-                meta.textContent = `Lines: ${lineCount} • ${owner}`;
+                const colorCode = (colorValue || DEFAULT_PATH_COLOR).toUpperCase();
+                meta.textContent = `Lines: ${lineCount} • ${owner} • ${colorCode}`;
 
                 const infoContainer = document.createElement('div');
                 infoContainer.className = 'path-info';
@@ -1259,6 +1325,7 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             });
 
             updatePathToggleButton();
+            updatePathControls();
         }
 
         function updatePathControls() {
@@ -1282,6 +1349,10 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                 tempPathLayers.forEach(layer => map.removeLayer(layer));
                 tempPathLayers = [];
                 tempPathLines = [];
+            }
+            if (!keepTempLines) {
+                tempPathColor = DEFAULT_PATH_COLOR;
+                if (pathColorInput) pathColorInput.value = DEFAULT_PATH_COLOR;
             }
             drawingPath = false;
             if (pathDrawHandler) {
@@ -1309,7 +1380,7 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                 pathDrawHandler.disable();
                 pathDrawHandler = null;
             }
-            pathDrawHandler = new L.Draw.Polyline(map, { shapeOptions: PATH_PREVIEW_STYLE });
+            pathDrawHandler = new L.Draw.Polyline(map, { shapeOptions: PATH_PREVIEW_STYLE(tempPathColor) });
             pathDrawHandler.enable();
         }
 
@@ -1327,6 +1398,10 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             drawingPath = true;
             tempPathLines = [];
             tempPathLayers = [];
+            tempPathColor = pathColorInput ? sanitizeColor(pathColorInput.value || DEFAULT_PATH_COLOR) : DEFAULT_PATH_COLOR;
+            if (pathColorInput) {
+                pathColorInput.value = tempPathColor;
+            }
             if (pathDrawingActions) pathDrawingActions.style.display = 'flex';
             showStatus('Drawing mode enabled. Click on the map to trace your path.');
             enablePathDrawing();
@@ -1341,7 +1416,7 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                 showStatus('A path line needs at least two points', true);
                 return;
             }
-            layer.setStyle(PATH_PREVIEW_STYLE);
+            layer.setStyle(PATH_STYLE(tempPathColor));
             tempPathLines.push(latlngs);
             tempPathLayers.push(layer);
             layer.addTo(map);
@@ -1358,6 +1433,9 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             }
             pathNameInput.value = '';
             pathDescriptionInput.value = '';
+            if (pathColorInput) {
+                pathColorInput.value = tempPathColor || DEFAULT_PATH_COLOR;
+            }
             pathModal.style.display = 'block';
             pathNameInput.focus();
         }
@@ -1382,9 +1460,13 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
             }
 
             const description = pathDescriptionInput.value.trim();
+            const color = pathColorInput ? sanitizeColor(pathColorInput.value || DEFAULT_PATH_COLOR) : DEFAULT_PATH_COLOR;
+            tempPathColor = color;
+
             const payload = {
                 name,
                 description,
+                color,
                 lines: tempPathLines.map(line => line.map(point => ({ lat: point.lat, lng: point.lng })))
             };
 
@@ -1764,13 +1846,14 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
                     refreshMarkerPermissions();
                     applyCategoryFilters();
                     showStatus(`Loaded ${pins.length} pins`);
-                    loadPaths();
                 } else {
                     showStatus('Error loading pins', true);
                 }
             } catch (error) {
                 showStatus('Error connecting to server', true);
                 console.error('Error:', error);
+            } finally {
+                await loadPaths();
             }
         }
 
@@ -2089,6 +2172,18 @@ const PATH_PREVIEW_STYLE = { color: '#f7e1a0', weight: 4, opacity: 0.9, dashArra
         }
         if (cancelPathBtn) {
             cancelPathBtn.addEventListener('click', cancelPathDrawing);
+        }
+        if (pathColorInput) {
+            pathColorInput.addEventListener('input', (event) => {
+                const value = sanitizeColor(event.target.value || DEFAULT_PATH_COLOR);
+                event.target.value = value;
+                tempPathColor = value;
+                tempPathLayers.forEach(layer => layer.setStyle(PATH_STYLE(tempPathColor)));
+                if (drawingPath) {
+                    enablePathDrawing();
+                    updatePathControls();
+                }
+            });
         }
 
         window.onload = function() {

@@ -74,13 +74,18 @@ def init_db():
                     name TEXT NOT NULL,
                     description TEXT,
                     lines JSONB NOT NULL,
+                    color TEXT NOT NULL DEFAULT '#D4A574',
                     discord_user_id TEXT NOT NULL,
                     discord_username TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-                """
+            """
             )
+            cursor.execute("ALTER TABLE paths ADD COLUMN IF NOT EXISTS color TEXT")
+            cursor.execute("UPDATE paths SET color = %s WHERE color IS NULL", (DEFAULT_PATH_COLOR,))
+            cursor.execute("ALTER TABLE paths ALTER COLUMN color SET DEFAULT %s", (DEFAULT_PATH_COLOR,))
+            cursor.execute("ALTER TABLE paths ALTER COLUMN color SET NOT NULL")
         db.commit()
         db.close()
         print("✅ PostgreSQL database initialized successfully!")
@@ -101,6 +106,17 @@ def is_admin_user(user_data):
     """Return True if the user has admin privileges."""
     username = user_data.get('username', '')
     return bool(username and username.lower() == 'randmiester')
+
+DEFAULT_PATH_COLOR = '#D4A574'
+
+
+def normalize_path_color(color_value):
+    if isinstance(color_value, str):
+        candidate = color_value.strip()
+        if candidate and candidate.startswith('#') and len(candidate) in (4, 7):
+            return candidate.upper()
+    return DEFAULT_PATH_COLOR
+
 
 def normalize_line_coordinates(lines):
     """Validate and normalize path line coordinates."""
@@ -594,6 +610,7 @@ def get_paths():
                     record['lines'] = json.loads(lines)
                 except json.JSONDecodeError:
                     record['lines'] = []
+            record['color'] = normalize_path_color(record.get('color'))
             return record
 
         result = [coerce_lines(dict(path)) for path in paths]
@@ -620,18 +637,21 @@ def create_path():
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
 
+        color_value = normalize_path_color(data.get('color'))
+
         db = get_db()
         cursor = db.cursor(row_factory=dict_row)
         cursor.execute(
             '''
-            INSERT INTO paths (name, description, lines, discord_user_id, discord_username)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO paths (name, description, lines, color, discord_user_id, discord_username)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING *
             ''',
             (
                 name,
                 description,
                 json.dumps(normalized_lines),
+                color_value,
                 request.user['discord_id'],
                 request.user['username']
             )
@@ -643,6 +663,7 @@ def create_path():
 
         path_dict = dict(new_path)
         path_dict['lines'] = normalized_lines
+        path_dict['color'] = color_value
         print(f"🛣️ Path created by {request.user['username']}: {name}")
         return jsonify(path_dict), 201
     except Exception as e:
@@ -695,17 +716,21 @@ def update_path(path_id):
             else:
                 normalized_lines = lines_value
 
+        color_input = data.get('color', None)
+        color_value = normalize_path_color(color_input if color_input is not None else existing.get('color'))
+
         cursor.execute(
             '''
             UPDATE paths
             SET name = %s,
                 description = %s,
                 lines = %s,
+                color = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
             RETURNING *
             ''',
-            (name, description, json.dumps(normalized_lines), path_id)
+            (name, description, json.dumps(normalized_lines), color_value, path_id)
         )
         updated_path = cursor.fetchone()
         db.commit()
@@ -714,6 +739,7 @@ def update_path(path_id):
 
         path_dict = dict(updated_path)
         path_dict['lines'] = normalized_lines
+        path_dict['color'] = color_value
         actor = request.user['username']
         if is_admin and path_owner_id != request.user['discord_id']:
             print(f"🛠️ Admin {actor} updated path {path_id} owned by {existing['discord_username']}")
