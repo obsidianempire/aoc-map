@@ -84,6 +84,8 @@ def init_db():
             )
             cursor.execute("ALTER TABLE paths ADD COLUMN IF NOT EXISTS color TEXT")
             cursor.execute("UPDATE paths SET color = %s WHERE color IS NULL", (DEFAULT_PATH_COLOR,))
+            cursor.execute("UPDATE paths SET color = %s WHERE color = ''", (DEFAULT_PATH_COLOR,))
+            cursor.execute("UPDATE paths SET color = UPPER(color) WHERE color <> UPPER(color)")
             cursor.execute("ALTER TABLE paths ALTER COLUMN color SET DEFAULT %s::text", (DEFAULT_PATH_COLOR,))
             cursor.execute("ALTER TABLE paths ALTER COLUMN color SET NOT NULL")
         db.commit()
